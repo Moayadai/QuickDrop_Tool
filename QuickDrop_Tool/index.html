@@ -221,6 +221,9 @@
   </div>
 
   <script>
+    // Global variable accessible by Python dropEvent
+    window.currentHoveredAction = null;
+
     // 1. Menu Datasets
     const MENUS = {
       DEFAULT: ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'],
@@ -237,8 +240,13 @@
      */
     function updateTooltipText(index) {
       const label = document.getElementById(`label-${index}`);
-      if (!label) return;
+      if (!label) {
+        window.currentHoveredAction = null;
+        return;
+      }
       const currentText = label.textContent.trim();
+      window.currentHoveredAction = currentText;
+
       const tooltipText = document.getElementById('tooltip-text');
       const tooltipCategory = document.getElementById('tooltip-category');
 
@@ -332,6 +340,7 @@
      * Clears all petal highlights and hides the center action pill.
      */
     window.clearHover = function() {
+      window.currentHoveredAction = null;
       if (currentHoverIndex === -1) {
         const tooltip = document.getElementById('tooltip');
         if (tooltip) tooltip.classList.remove('visible');
@@ -359,6 +368,7 @@
     });
 
     window.addEventListener('mouseleave', () => {
+      window.currentHoveredAction = null;
       window.clearHover();
     });
 

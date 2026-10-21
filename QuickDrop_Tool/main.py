@@ -114,10 +114,24 @@ class TransparentWebDropZone(QWebEngineView):
     def dropEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            for url in event.mimeData().urls():
-                print(f"[QuickDrop] Dropped file ({self._current_modifier}): {url.toLocalFile()}")
-        self.page().runJavaScript("window.clearHover();")
-        self._sync_modifier("DEFAULT")
+            file_paths = [
+                url.toLocalFile()
+                for url in event.mimeData().urls()
+                if url.isLocalFile() or url.toLocalFile()
+            ]
+
+            def on_action_received(action: str | None) -> None:
+                action_name = action if action else "None"
+                for path in file_paths:
+                    print(f"ACTION: {action_name} | FILE: {path}")
+                self.page().runJavaScript("window.clearHover();")
+                self._sync_modifier("DEFAULT")
+
+            self.page().runJavaScript(
+                "window.currentHoveredAction", on_action_received
+            )
+        else:
+            event.ignore()
 
     # ── Desktop Interactivity & Mouse Hover Tracking ───────────────
 
