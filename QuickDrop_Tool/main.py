@@ -1,18 +1,9 @@
-import math
 import os
 import sys
 
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtWebEngineWidgets import QWebEngineView
-
-# Menu definitions matching the frontend datasets
-MENUS = {
-    "DEFAULT": ("PDF", "JPG", "PNG", "WEBP", "HEIC", "TIFF", "AVIF", "BMP"),
-    "CTRL": ("COMPRESS", "METADATA", "EDIT", "REDACT", "CROP", "ADD BG", "WATERMARK", "RESIZE"),
-    "SHIFT": ("ENCRYPT", "OCR TEXT", "VECTORIZE", "ENHANCE", "REMOVE BG", "SPLIT", "MERGE", "UPSCALER"),
-    "ALT": ("QUICK LOOK", "RENAME", "TRASH", "DUPLICATE", "ARCHIVE", "SHARE", "TAG", "GET INFO"),
-}
 
 
 class TransparentWebDropZone(QWebEngineView):
@@ -21,24 +12,26 @@ class TransparentWebDropZone(QWebEngineView):
     def __init__(self) -> None:
         super().__init__()
 
-        # 1. WebEngine Setup: Frameless, Always on Top, Size 500x500
+        # Frameless and stays on top
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setFixedSize(500, 500)
 
-        # Translucent Background Configuration
+        # 1. True Transparency (CRITICAL)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.page().setBackgroundColor(Qt.GlobalColor.transparent)
 
-        # Enable Native Drops & Custom Context Menu Policy
+        # Enable Drops, Keyboard Focus & Mouse Tracking for real-time hover
         self.setAcceptDrops(True)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.NoContextMenu)
 
-        # Internal state tracking
-        self._current_menu: str = "DEFAULT"
+        # State tracking
         self._drag_start_pos = None
+        self._current_modifier = "DEFAULT"
 
         # Load local index.html using absolute path and QUrl.fromLocalFile()
         html_path = os.path.abspath(
@@ -57,26 +50,43 @@ class TransparentWebDropZone(QWebEngineView):
             y = (geo.height() - self.height()) // 2
             self.move(x, y)
 
-    def _determine_active_segment(self, x: float, y: float, menu: str) -> tuple[int, str | None]:
-        """Calculates which segment is active at (x, y) relative to center (250, 250)."""
-        cx, cy = self.width() / 2.0, self.height() / 2.0
-        dx = x - cx
-        dy = y - cy
-        dist = math.hypot(dx, dy)
+    # ── Modifier & Dynamic Menu Switching ──────────────────────────
 
-        # Annular ring bounds: inner radius 65px, outer radius 180px
-        if not (65.0 <= dist <= 180.0):
-            return -1, None
+    def _sync_modifier(self, modifier_name: str) -> None:
+        """Inform WebEngine of the active modifier menu if it has changed."""
+        if self._current_modifier != modifier_name:
+            self._current_modifier = modifier_name
+            self.page().runJavaScript(f"window.switchMenu('{modifier_name}');")
 
-        # Angle clockwise from 12 o'clock (North = 0 deg)
-        rad = math.atan2(dy, dx)
-        deg = (math.degrees(rad) + 90.0 + 360.0) % 360.0
-        index = int(((deg + 22.5) % 360.0) // 45.0)
+    def _resolve_modifier(self, event, is_release: bool = False) -> str:
+        """Resolve the effective modifier name based on event modifiers and key."""
+        mods = event.modifiers()
+        key = event.key() if hasattr(event, "key") else None
 
-        items = MENUS.get(menu, MENUS["DEFAULT"])
-        return index, items[index]
+        if is_release:
+            if key == Qt.Key.Key_Control:
+                mods &= ~Qt.KeyboardModifier.ControlModifier
+            elif key == Qt.Key.Key_Shift:
+                mods &= ~Qt.KeyboardModifier.ShiftModifier
+            elif key == Qt.Key.Key_Alt:
+                mods &= ~Qt.KeyboardModifier.AltModifier
+        else:
+            if key == Qt.Key.Key_Control:
+                mods |= Qt.KeyboardModifier.ControlModifier
+            elif key == Qt.Key.Key_Shift:
+                mods |= Qt.KeyboardModifier.ShiftModifier
+            elif key == Qt.Key.Key_Alt:
+                mods |= Qt.KeyboardModifier.AltModifier
 
-    # ── Native Drag & Drop with Modifier Keys ───────────────────────
+        if mods & Qt.KeyboardModifier.ControlModifier:
+            return "CTRL"
+        elif mods & Qt.KeyboardModifier.ShiftModifier:
+            return "SHIFT"
+        elif mods & Qt.KeyboardModifier.AltModifier:
+            return "ALT"
+        return "DEFAULT"
+
+    # ── Native Drag & Drop Events ──────────────────────────────────
 
     def dragEnterEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
@@ -87,61 +97,29 @@ class TransparentWebDropZone(QWebEngineView):
     def dragMoveEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-
-            # 1. Pass cursor coordinates to JavaScript updateHover(x, y)
+            mod_name = self._resolve_modifier(event, is_release=False)
+            self._sync_modifier(mod_name)
             pos = event.position()
             self.page().runJavaScript(
                 f"window.updateHover({pos.x()}, {pos.y()});"
             )
-
-            # 2. DETECT KEYBOARD MODIFIERS
-            mods = QApplication.keyboardModifiers()
-            if mods & Qt.KeyboardModifier.ShiftModifier:
-                target_menu = "SHIFT"
-            elif mods & Qt.KeyboardModifier.ControlModifier:
-                target_menu = "CTRL"
-            elif mods & Qt.KeyboardModifier.AltModifier:
-                target_menu = "ALT"
-            else:
-                target_menu = "DEFAULT"
-
-            if target_menu != self._current_menu:
-                self._current_menu = target_menu
-                self.page().runJavaScript(f"window.switchMenu('{target_menu}');")
         else:
             event.ignore()
 
     def dragLeaveEvent(self, event) -> None:  # noqa: N802
         self.page().runJavaScript("window.clearHover();")
+        self._sync_modifier("DEFAULT")
         event.accept()
 
     def dropEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            urls = event.mimeData().urls()
-            pos = event.position()
-
-            # Identify which menu and segment was active at drop point
-            index, action = self._determine_active_segment(
-                pos.x(), pos.y(), self._current_menu
-            )
-
-            for url in urls:
-                file_path = url.toLocalFile()
-                if action:
-                    print(
-                        f"[QuickDrop] Intended Action: '{action}' on file: {file_path} "
-                        f"(Menu: {self._current_menu}, Segment: {index})"
-                    )
-                else:
-                    print(
-                        f"[QuickDrop] Dropped file in empty center / outside: {file_path} "
-                        f"(No active segment)"
-                    )
-
+            for url in event.mimeData().urls():
+                print(f"[QuickDrop] Dropped file ({self._current_modifier}): {url.toLocalFile()}")
         self.page().runJavaScript("window.clearHover();")
+        self._sync_modifier("DEFAULT")
 
-    # ── Interactive Window Movement & Keyboard Handling ─────────────
+    # ── Desktop Interactivity & Mouse Hover Tracking ───────────────
 
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
@@ -160,47 +138,35 @@ class TransparentWebDropZone(QWebEngineView):
             self.move(event.globalPosition().toPoint() - self._drag_start_pos)
             event.accept()
         else:
+            # Forward live cursor hover coordinates to WebEngine
+            pos = event.position()
+            self.page().runJavaScript(
+                f"window.updateHover({pos.x()}, {pos.y()});"
+            )
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         self._drag_start_pos = None
         super().mouseReleaseEvent(event)
 
+    def leaveEvent(self, event) -> None:  # noqa: N802
+        self.page().runJavaScript("window.clearHover();")
+        super().leaveEvent(event)
+
+    # ── Keyboard Tracking: Dynamic Switching ───────────────────────
+
     def keyPressEvent(self, event) -> None:  # noqa: N802
         if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
             self.close()
             return
 
-        # Live modifier key switching during keyboard preview
-        mods = QApplication.keyboardModifiers()
-        if mods & Qt.KeyboardModifier.ShiftModifier:
-            menu = "SHIFT"
-        elif mods & Qt.KeyboardModifier.ControlModifier:
-            menu = "CTRL"
-        elif mods & Qt.KeyboardModifier.AltModifier:
-            menu = "ALT"
-        else:
-            menu = "DEFAULT"
-
-        if menu != self._current_menu:
-            self._current_menu = menu
-            self.page().runJavaScript(f"window.switchMenu('{menu}');")
+        mod_name = self._resolve_modifier(event, is_release=False)
+        self._sync_modifier(mod_name)
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802
-        mods = QApplication.keyboardModifiers()
-        if mods & Qt.KeyboardModifier.ShiftModifier:
-            menu = "SHIFT"
-        elif mods & Qt.KeyboardModifier.ControlModifier:
-            menu = "CTRL"
-        elif mods & Qt.KeyboardModifier.AltModifier:
-            menu = "ALT"
-        else:
-            menu = "DEFAULT"
-
-        if menu != self._current_menu:
-            self._current_menu = menu
-            self.page().runJavaScript(f"window.switchMenu('{menu}');")
+        mod_name = self._resolve_modifier(event, is_release=True)
+        self._sync_modifier(mod_name)
         super().keyReleaseEvent(event)
 
 

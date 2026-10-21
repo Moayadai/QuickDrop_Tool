@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>QuickDrop Tangerine Clone</title>
+  <title>Tangerine Radial Menu</title>
   <style>
     *, *::before, *::after {
       box-sizing: border-box;
@@ -13,6 +13,7 @@
       -webkit-user-select: none;
     }
 
+    /* 1. Base Layout: Full-screen, transparent background */
     html, body {
       width: 100vw;
       height: 100vh;
@@ -26,8 +27,8 @@
       -moz-osx-font-smoothing: grayscale;
     }
 
-    /* Container for Radial Menu and Floating Pill Tooltip */
-    .app-viewport {
+    /* 500x500 Main Viewport */
+    .app-canvas {
       position: relative;
       width: 500px;
       height: 500px;
@@ -36,26 +37,26 @@
       align-items: center;
     }
 
-    /* Floating Pill Tooltip ABOVE Radial Menu */
+    /* 6. Floating Tooltip: Pill-shaped div floating ABOVE the ring */
     .floating-tooltip {
       position: absolute;
-      top: 22px;
+      top: 14px;
       left: 50%;
       transform: translateX(-50%) translateY(-6px) scale(0.96);
-      padding: 7px 20px;
+      padding: 8px 24px;
       border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.88);
-      backdrop-filter: blur(25px) saturate(180%);
-      -webkit-backdrop-filter: blur(25px) saturate(180%);
-      border: 1px solid rgba(255, 255, 255, 0.7);
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.85);
       box-shadow: 
-        0 10px 24px rgba(0, 0, 0, 0.12),
-        0 2px 6px rgba(0, 0, 0, 0.06),
-        inset 0 1px 1.5px rgba(255, 255, 255, 0.95);
+        0 10px 24px rgba(0, 0, 0, 0.16),
+        0 2px 6px rgba(0, 0, 0, 0.08),
+        inset 0 1px 1.5px rgba(255, 255, 255, 1);
       opacity: 0;
       pointer-events: none;
       transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 100;
+      z-index: 1000;
       white-space: nowrap;
     }
 
@@ -65,39 +66,38 @@
     }
 
     .tooltip-text {
-      font-size: 13.5px;
-      font-weight: 600;
-      color: #1a1a1c;
+      font-size: 14px;
+      font-weight: 700;
+      color: #111111;
       letter-spacing: -0.2px;
-      display: inline-block;
     }
 
-    /* Radial Menu Wrapper (Diameter 360px) */
-    .radial-menu-wrapper {
+    /* 2 & 3. Radial Ring Container (380x380px) */
+    .radial-menu {
       position: relative;
-      width: 360px;
-      height: 360px;
-      filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.12));
+      width: 380px;
+      height: 380px;
+      filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.14));
     }
 
-    /* Base Frosted Glass Ring with Empty Center Hole */
-    .glass-ring-base {
+    /* 3. The Radial Ring Base: Light, bright whitish glass (rgba(255, 255, 255, 0.25)) */
+    /* Center Hole: CSS clip-path punches out radius 75px, leaving it 100% transparent */
+    .glass-ring-backdrop {
       position: absolute;
       top: 0;
       left: 0;
-      width: 360px;
-      height: 360px;
-      border-radius: 50%;
-      background: rgba(255, 255, 255, 0.2);
-      backdrop-filter: blur(25px) saturate(180%);
-      -webkit-backdrop-filter: blur(25px) saturate(180%);
-      -webkit-mask-image: radial-gradient(circle, transparent 65px, black 65.5px);
-      mask-image: radial-gradient(circle, transparent 65px, black 65.5px);
+      width: 380px;
+      height: 380px;
+      background: rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      clip-path: path(evenodd, 'M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z');
+      -webkit-clip-path: path(evenodd, 'M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z');
       pointer-events: none;
     }
 
-    /* SVG Segments and Thin Separators */
-    .segments-svg {
+    /* SVG Segments Overlay (380x380) */
+    .radial-svg {
       position: absolute;
       top: 0;
       left: 0;
@@ -107,180 +107,161 @@
       pointer-events: auto;
     }
 
-    /* Annular Sector Base */
-    .sector {
+    /* 5. Hover State: Solid bright white (rgba(255, 255, 255, 0.95)) */
+    .segment-slice {
       fill: rgba(255, 255, 255, 0.001);
       cursor: pointer;
       transition: fill 0.15s ease;
     }
 
-    /* Active Segment: Bright Solid Translucent White (NO ORANGE) */
-    .sector.active {
-      fill: rgba(255, 255, 255, 0.8);
+    .segment-slice.active {
+      fill: rgba(255, 255, 255, 0.95);
     }
 
-    /* Thin Separators (rgba(255, 255, 255, 0.4)) */
+    /* 4. Thin Separators & Circular Borders */
     .separator-line {
-      stroke: rgba(255, 255, 255, 0.4);
-      stroke-width: 1px;
+      stroke: rgba(255, 255, 255, 0.5);
+      stroke-width: 1.5px;
       stroke-linecap: round;
       pointer-events: none;
     }
 
-    .ring-border {
+    .circular-border {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.4);
-      stroke-width: 1px;
+      stroke: rgba(255, 255, 255, 0.5);
+      stroke-width: 1.5px;
       pointer-events: none;
     }
 
-    /* Labels Layer */
-    .labels-container {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-    }
-
-    /* Modern Clean Sans-Serif Segment Labels */
+    /* 4. Readability: SVG Text Labels with Dark Bold Visible Text */
     .segment-label {
-      position: absolute;
-      transform: translate(-50%, -50%);
-      font-size: 12.5px;
-      font-weight: 700;
-      letter-spacing: 0.4px;
-      color: #222222;
-      transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
-      text-align: center;
-      line-height: 1.1;
-      white-space: nowrap;
+      font-size: 13.5px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      fill: #0d0d0f;
+      text-anchor: middle;
+      dominant-baseline: central;
       pointer-events: none;
+      transition: fill 0.15s ease;
+      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95)) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9));
     }
 
-    /* Active Segment Label: Dark Crisp Text */
     .segment-label.active {
-      color: #000000;
-      font-weight: 800;
-      transform: translate(-50%, -50%) scale(1.06);
+      fill: #000000;
+      font-weight: 900;
+      filter: none;
     }
   </style>
 </head>
 <body>
-  <div class="app-viewport">
-    <!-- Floating Pill Tooltip Above Radial Menu -->
+  <div class="app-canvas">
+    <!-- 6. Floating Tooltip above the ring -->
     <div class="floating-tooltip" id="tooltip">
       <span class="tooltip-text" id="tooltip-text">Converting to PDF</span>
     </div>
 
-    <!-- Radial Menu -->
-    <div class="radial-menu-wrapper" id="radial-menu">
-      <!-- Base Frosted Glass Ring (Center Hole Punched via Mask) -->
-      <div class="glass-ring-base"></div>
+    <!-- 2. The Radial Ring (380x380px) -->
+    <div class="radial-menu" id="radial-menu">
+      <!-- 2 & 3. Bright Whitish Glass Backdrop with Masked Center Hole -->
+      <div class="glass-ring-backdrop"></div>
 
-      <!-- SVG Sectors and Thin Separators (Center (180, 180), R=180, r=65) -->
-      <svg class="segments-svg" viewBox="0 0 360 360">
-        <!-- 8 Annular Sectors -->
-        <path id="sector-0" class="sector" data-index="0" d="M 111.12 13.73 A 180 180 0 0 1 248.88 13.73 L 204.87 119.90 A 65 65 0 0 0 155.13 119.90 Z" />
-        <path id="sector-1" class="sector" data-index="1" d="M 248.88 13.73 A 180 180 0 0 1 346.27 111.12 L 240.10 155.13 A 65 65 0 0 0 204.87 119.90 Z" />
-        <path id="sector-2" class="sector" data-index="2" d="M 346.27 111.12 A 180 180 0 0 1 346.27 248.88 L 240.10 204.87 A 65 65 0 0 0 240.10 155.13 Z" />
-        <path id="sector-3" class="sector" data-index="3" d="M 346.27 248.88 A 180 180 0 0 1 248.88 346.27 L 204.87 240.10 A 65 65 0 0 0 240.10 204.87 Z" />
-        <path id="sector-4" class="sector" data-index="4" d="M 248.88 346.27 A 180 180 0 0 1 111.12 346.27 L 155.13 240.10 A 65 65 0 0 0 204.87 240.10 Z" />
-        <path id="sector-5" class="sector" data-index="5" d="M 111.12 346.27 A 180 180 0 0 1 13.73 248.88 L 119.90 204.87 A 65 65 0 0 0 155.13 240.10 Z" />
-        <path id="sector-6" class="sector" data-index="6" d="M 13.73 248.88 A 180 180 0 0 1 13.73 111.12 L 119.90 155.13 A 65 65 0 0 0 119.90 204.87 Z" />
-        <path id="sector-7" class="sector" data-index="7" d="M 13.73 111.12 A 180 180 0 0 1 111.12 13.73 L 155.13 119.90 A 65 65 0 0 0 119.90 155.13 Z" />
+      <!-- SVG Slices, Separators, and Text Elements (Center: 190, 190 | Outer R: 190 | Inner r: 75) -->
+      <svg class="radial-svg" viewBox="0 0 380 380">
+        <!-- 3. Base Whitish Glass Ring (rgba(255, 255, 255, 0.25)) -->
+        <path class="glass-ring-base" fill="rgba(255, 255, 255, 0.25)" fill-rule="evenodd" d="M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z" />
 
-        <!-- Outer and Inner Border Rings -->
-        <circle cx="180" cy="180" r="180" class="ring-border" />
-        <circle cx="180" cy="180" r="65" class="ring-border" />
+        <!-- 8 Annular Segments -->
+        <path id="slice-0" class="segment-slice" data-index="0" data-format="PDF" d="M 117.29 14.46 A 190 190 0 0 1 262.71 14.46 L 218.70 120.71 A 75 75 0 0 0 161.30 120.71 Z" />
+        <path id="slice-1" class="segment-slice" data-index="1" data-format="JPG" d="M 262.71 14.46 A 190 190 0 0 1 365.54 117.29 L 259.29 161.30 A 75 75 0 0 0 218.70 120.71 Z" />
+        <path id="slice-2" class="segment-slice" data-index="2" data-format="PNG" d="M 365.54 117.29 A 190 190 0 0 1 365.54 262.71 L 259.29 218.70 A 75 75 0 0 0 259.29 161.30 Z" />
+        <path id="slice-3" class="segment-slice" data-index="3" data-format="WEBP" d="M 365.54 262.71 A 190 190 0 0 1 262.71 365.54 L 218.70 259.29 A 75 75 0 0 0 259.29 218.70 Z" />
+        <path id="slice-4" class="segment-slice" data-index="4" data-format="HEIC" d="M 262.71 365.54 A 190 190 0 0 1 117.29 365.54 L 161.30 259.29 A 75 75 0 0 0 218.70 259.29 Z" />
+        <path id="slice-5" class="segment-slice" data-index="5" data-format="TIFF" d="M 117.29 365.54 A 190 190 0 0 1 14.46 262.71 L 120.71 218.70 A 75 75 0 0 0 161.30 259.29 Z" />
+        <path id="slice-6" class="segment-slice" data-index="6" data-format="AVIF" d="M 14.46 262.71 A 190 190 0 0 1 14.46 117.29 L 120.71 161.30 A 75 75 0 0 0 120.71 218.70 Z" />
+        <path id="slice-7" class="segment-slice" data-index="7" data-format="BMP" d="M 14.46 117.29 A 190 190 0 0 1 117.29 14.46 L 161.30 120.71 A 75 75 0 0 0 120.71 161.30 Z" />
 
-        <!-- 8 Thin Separators (rgba(255, 255, 255, 0.4)) -->
-        <line x1="155.13" y1="119.90" x2="111.12" y2="13.73" class="separator-line" />
-        <line x1="204.87" y1="119.90" x2="248.88" y2="13.73" class="separator-line" />
-        <line x1="240.10" y1="155.13" x2="346.27" y2="111.12" class="separator-line" />
-        <line x1="240.10" y1="204.87" x2="346.27" y2="248.88" class="separator-line" />
-        <line x1="204.87" y1="240.10" x2="248.88" y2="346.27" class="separator-line" />
-        <line x1="155.13" y1="240.10" x2="111.12" y2="346.27" class="separator-line" />
-        <line x1="119.90" y1="204.87" x2="13.73" y2="248.88" class="separator-line" />
-        <line x1="119.90" y1="155.13" x2="13.73" y2="111.12" class="separator-line" />
+        <!-- Outer & Inner Circular Borders -->
+        <circle cx="190" cy="190" r="190" class="circular-border" />
+        <circle cx="190" cy="190" r="75" class="circular-border" />
+
+        <!-- 8 Separators radiating from inner hole (75px) to outer edge (190px) -->
+        <line x1="161.30" y1="120.71" x2="117.29" y2="14.46" class="separator-line" />
+        <line x1="218.70" y1="120.71" x2="262.71" y2="14.46" class="separator-line" />
+        <line x1="259.29" y1="161.30" x2="365.54" y2="117.29" class="separator-line" />
+        <line x1="259.29" y1="218.70" x2="365.54" y2="262.71" class="separator-line" />
+        <line x1="218.70" y1="259.29" x2="262.71" y2="365.54" class="separator-line" />
+        <line x1="161.30" y1="259.29" x2="117.29" y2="365.54" class="separator-line" />
+        <line x1="120.71" y1="218.70" x2="14.46" y2="262.71" class="separator-line" />
+        <line x1="120.71" y1="161.30" x2="14.46" y2="117.29" class="separator-line" />
+
+        <!-- 1. 8 SVG <text> Elements with IDs label-0 to label-7 (rmid = 132.5) -->
+        <text id="label-0" class="segment-label" x="190.00" y="57.50">PDF</text>
+        <text id="label-1" class="segment-label" x="283.69" y="96.31">JPG</text>
+        <text id="label-2" class="segment-label" x="322.50" y="190.00">PNG</text>
+        <text id="label-3" class="segment-label" x="283.69" y="283.69">WEBP</text>
+        <text id="label-4" class="segment-label" x="190.00" y="322.50">HEIC</text>
+        <text id="label-5" class="segment-label" x="96.31" y="283.69">TIFF</text>
+        <text id="label-6" class="segment-label" x="57.50" y="190.00">AVIF</text>
+        <text id="label-7" class="segment-label" x="96.31" y="96.31">BMP</text>
       </svg>
-
-      <!-- 8 Segment Labels (rmid = 122.5) -->
-      <div class="labels-container">
-        <div id="label-0" class="segment-label" style="left: 180.00px; top: 57.50px;">PDF</div>
-        <div id="label-1" class="segment-label" style="left: 266.62px; top: 93.38px;">JPG</div>
-        <div id="label-2" class="segment-label" style="left: 302.50px; top: 180.00px;">PNG</div>
-        <div id="label-3" class="segment-label" style="left: 266.62px; top: 266.62px;">WEBP</div>
-        <div id="label-4" class="segment-label" style="left: 180.00px; top: 302.50px;">HEIC</div>
-        <div id="label-5" class="segment-label" style="left: 93.38px; top: 266.62px;">TIFF</div>
-        <div id="label-6" class="segment-label" style="left: 57.50px; top: 180.00px;">AVIF</div>
-        <div id="label-7" class="segment-label" style="left: 93.38px; top: 93.38px;">BMP</div>
-      </div>
     </div>
   </div>
 
   <script>
-    // 4 Menu Datasets
+    // 1. Menu Datasets
     const MENUS = {
       DEFAULT: ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'],
-      CTRL:    ['COMPRESS', 'METADATA', 'EDIT', 'REDACT', 'CROP', 'ADD BG', 'WATERMARK', 'RESIZE'],
-      SHIFT:   ['ENCRYPT', 'OCR TEXT', 'VECTORIZE', 'ENHANCE', 'REMOVE BG', 'SPLIT', 'MERGE', 'UPSCALER'],
-      ALT:     ['QUICK LOOK', 'RENAME', 'TRASH', 'DUPLICATE', 'ARCHIVE', 'SHARE', 'TAG', 'GET INFO']
+      CTRL:    ['COMPRESS', 'METADATA', 'EDIT', 'REDACT', 'CROP', 'ADD BG', 'WATER', 'RESIZE'],
+      SHIFT:   ['ENCRYPT', 'DECRYPT', 'MERGE', 'SPLIT', 'EXTRACT', 'ROTATE', 'FLIP', 'FILTER'],
+      ALT:     ['TO ZIP', 'TO TAR', 'TO ISO', 'UNZIP', 'SEND', 'PRINT', 'DELETE', 'INFO']
     };
 
-    let currentMenu = 'DEFAULT';
-    let currentHoveredIndex = -1;
+    let currentModifier = 'DEFAULT';
+    let currentHoverIndex = -1;
 
     /**
-     * Re-renders the text in the 8 segments based on the active modifier key.
+     * Updates the floating tooltip dynamically based on the current text of the hovered segment.
+     */
+    function updateTooltipText(index) {
+      const label = document.getElementById(`label-${index}`);
+      if (!label) return;
+      const currentText = label.textContent.trim();
+      const tooltipText = document.getElementById('tooltip-text');
+      if (!tooltipText) return;
+
+      if (currentModifier === 'DEFAULT') {
+        tooltipText.textContent = `Converting to ${currentText}`;
+      } else {
+        tooltipText.textContent = `Action: ${currentText}`;
+      }
+    }
+
+    /**
+     * 2. JS Switching Logic: Dynamically updates the textContent of the 8 SVG text elements based on modifier array.
      * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'SHIFT' | 'ALT'
      */
     window.switchMenu = function(modifier) {
       const mod = (modifier || 'DEFAULT').toUpperCase();
-      if (!MENUS[mod]) return;
-      if (currentMenu === mod) return;
-
-      currentMenu = mod;
-      const items = MENUS[mod];
+      const menuArray = MENUS[mod] || MENUS['DEFAULT'];
+      currentModifier = mod;
 
       for (let i = 0; i < 8; i++) {
-        const label = document.getElementById(`label-${i}`);
-        if (label) {
-          label.style.opacity = '0';
-          setTimeout(() => {
-            label.textContent = items[i];
-            label.style.opacity = '1';
-          }, 60);
+        const textEl = document.getElementById(`label-${i}`);
+        if (textEl) {
+          textEl.textContent = menuArray[i];
         }
       }
 
-      // If currently hovering a segment, immediately update the tooltip
-      if (currentHoveredIndex >= 0 && currentHoveredIndex < 8) {
-        updateTooltip(items[currentHoveredIndex]);
+      // If a segment is currently hovered, immediately update the tooltip text
+      if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
+        updateTooltipText(currentHoverIndex);
       }
     };
 
     /**
-     * Updates floating tooltip text based on format or action.
-     */
-    function updateTooltip(item) {
-      const tooltip = document.getElementById('tooltip');
-      const tooltipText = document.getElementById('tooltip-text');
-      if (!tooltipText || !tooltip) return;
-
-      if (currentMenu === 'DEFAULT') {
-        tooltipText.textContent = `Converting to ${item}`;
-      } else {
-        tooltipText.textContent = `Action: ${item}`;
-      }
-      tooltip.classList.add('visible');
-    }
-
-    /**
-     * Highlights the hovered segment, updates and displays the floating tooltip.
-     * @param {number} x - Cursor X coordinate (window/widget space)
-     * @param {number} y - Cursor Y coordinate (window/widget space)
+     * Updates hover state, highlights active segment, and reveals floating tooltip.
+     * @param {number} x - Cursor X coordinate (window space)
+     * @param {number} y - Cursor Y coordinate (window space)
      */
     window.updateHover = function(x, y) {
       const menu = document.getElementById('radial-menu');
@@ -294,62 +275,58 @@
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
 
-      const innerRadius = 65;
-      const outerRadius = 180;
-
-      // Inside center hole or outside radial ring -> clear hover
-      if (dist < innerRadius || dist > outerRadius) {
+      // Center hole: 75px radius | Outer edge: 190px radius
+      if (dist < 75 || dist > 190) {
         window.clearHover();
         return;
       }
 
-      // Calculate angle relative to 12 o'clock (North = 0 deg, clockwise)
+      // Calculate angle clockwise from 12 o'clock (North = 0 deg)
       const rad = Math.atan2(dy, dx);
       const deg = (rad * 180 / Math.PI + 90 + 360) % 360;
       const index = Math.floor(((deg + 22.5) % 360) / 45);
 
-      if (index === currentHoveredIndex) {
-        return;
-      }
+      if (index === currentHoverIndex) return;
+      currentHoverIndex = index;
 
-      currentHoveredIndex = index;
-      const activeItems = MENUS[currentMenu] || MENUS['DEFAULT'];
-      const activeItem = activeItems[index];
-
-      // Update segment hover state (Solid translucent white, dark text)
+      // Update segment hover state (solid bright white)
       for (let i = 0; i < 8; i++) {
-        const sec = document.getElementById(`sector-${i}`);
-        const lbl = document.getElementById(`label-${i}`);
+        const slice = document.getElementById(`slice-${i}`);
+        const label = document.getElementById(`label-${i}`);
         if (i === index) {
-          if (sec) sec.classList.add('active');
-          if (lbl) lbl.classList.add('active');
+          if (slice) slice.classList.add('active');
+          if (label) label.classList.add('active');
         } else {
-          if (sec) sec.classList.remove('active');
-          if (lbl) lbl.classList.remove('active');
+          if (slice) slice.classList.remove('active');
+          if (label) label.classList.remove('active');
         }
       }
 
-      // Show floating tooltip above menu
-      updateTooltip(activeItem);
+      // Show pill tooltip reading current text dynamically
+      updateTooltipText(index);
+      const tooltip = document.getElementById('tooltip');
+      if (tooltip) {
+        tooltip.classList.add('visible');
+      }
     };
 
     /**
-     * Hides the floating tooltip and removes segment highlights.
+     * Clears all segment highlights and hides the tooltip.
      */
     window.clearHover = function() {
-      if (currentHoveredIndex === -1) {
+      if (currentHoverIndex === -1) {
         const tooltip = document.getElementById('tooltip');
         if (tooltip) tooltip.classList.remove('visible');
         return;
       }
 
-      currentHoveredIndex = -1;
+      currentHoverIndex = -1;
 
       for (let i = 0; i < 8; i++) {
-        const sec = document.getElementById(`sector-${i}`);
-        const lbl = document.getElementById(`label-${i}`);
-        if (sec) sec.classList.remove('active');
-        if (lbl) lbl.classList.remove('active');
+        const slice = document.getElementById(`slice-${i}`);
+        const label = document.getElementById(`label-${i}`);
+        if (slice) slice.classList.remove('active');
+        if (label) label.classList.remove('active');
       }
 
       const tooltip = document.getElementById('tooltip');
@@ -358,7 +335,7 @@
       }
     };
 
-    // Browser interaction support (Mouse movement and Modifier keys)
+    // Standard in-page mouse event listeners for browser testing
     window.addEventListener('mousemove', (e) => {
       window.updateHover(e.clientX, e.clientY);
     });
@@ -367,6 +344,7 @@
       window.clearHover();
     });
 
+    // In-page keyboard modifier listeners for browser testing
     window.addEventListener('keydown', (e) => {
       if (e.key === 'Control') window.switchMenu('CTRL');
       else if (e.key === 'Shift') window.switchMenu('SHIFT');
@@ -374,12 +352,10 @@
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt') {
-        if (e.shiftKey) window.switchMenu('SHIFT');
-        else if (e.ctrlKey) window.switchMenu('CTRL');
-        else if (e.altKey) window.switchMenu('ALT');
-        else window.switchMenu('DEFAULT');
-      }
+      if (e.ctrlKey) window.switchMenu('CTRL');
+      else if (e.shiftKey) window.switchMenu('SHIFT');
+      else if (e.altKey) window.switchMenu('ALT');
+      else window.switchMenu('DEFAULT');
     });
   </script>
 </body>
