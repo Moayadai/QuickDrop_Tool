@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuickDrop Tangerine Clone</title>
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: transparent;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    /* Container for Radial Menu and Floating Pill Tooltip */
+    .app-viewport {
+      position: relative;
+      width: 500px;
+      height: 500px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    /* Floating Pill Tooltip ABOVE Radial Menu */
+    .floating-tooltip {
+      position: absolute;
+      top: 22px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-6px) scale(0.96);
+      padding: 7px 20px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      box-shadow: 
+        0 10px 24px rgba(0, 0, 0, 0.12),
+        0 2px 6px rgba(0, 0, 0, 0.06),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.95);
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 100;
+      white-space: nowrap;
+    }
+
+    .floating-tooltip.visible {
+      opacity: 1;
+      transform: translateX(-50%) translateY(0) scale(1);
+    }
+
+    .tooltip-text {
+      font-size: 13.5px;
+      font-weight: 600;
+      color: #1a1a1c;
+      letter-spacing: -0.2px;
+      display: inline-block;
+    }
+
+    /* Radial Menu Wrapper (Diameter 360px) */
+    .radial-menu-wrapper {
+      position: relative;
+      width: 360px;
+      height: 360px;
+      filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.12));
+    }
+
+    /* Base Frosted Glass Ring with Empty Center Hole */
+    .glass-ring-base {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 360px;
+      height: 360px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      -webkit-mask-image: radial-gradient(circle, transparent 65px, black 65.5px);
+      mask-image: radial-gradient(circle, transparent 65px, black 65.5px);
+      pointer-events: none;
+    }
+
+    /* SVG Segments and Thin Separators */
+    .segments-svg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+      pointer-events: auto;
+    }
+
+    /* Annular Sector Base */
+    .sector {
+      fill: rgba(255, 255, 255, 0.001);
+      cursor: pointer;
+      transition: fill 0.15s ease;
+    }
+
+    /* Active Segment: Bright Solid Translucent White (NO ORANGE) */
+    .sector.active {
+      fill: rgba(255, 255, 255, 0.8);
+    }
+
+    /* Thin Separators (rgba(255, 255, 255, 0.4)) */
+    .separator-line {
+      stroke: rgba(255, 255, 255, 0.4);
+      stroke-width: 1px;
+      stroke-linecap: round;
+      pointer-events: none;
+    }
+
+    .ring-border {
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.4);
+      stroke-width: 1px;
+      pointer-events: none;
+    }
+
+    /* Labels Layer */
+    .labels-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+    }
+
+    /* Modern Clean Sans-Serif Segment Labels */
+    .segment-label {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      font-size: 12.5px;
+      font-weight: 700;
+      letter-spacing: 0.4px;
+      color: #222222;
+      transition: opacity 0.15s ease, color 0.15s ease, transform 0.15s ease;
+      text-align: center;
+      line-height: 1.1;
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    /* Active Segment Label: Dark Crisp Text */
+    .segment-label.active {
+      color: #000000;
+      font-weight: 800;
+      transform: translate(-50%, -50%) scale(1.06);
+    }
+  </style>
+</head>
+<body>
+  <div class="app-viewport">
+    <!-- Floating Pill Tooltip Above Radial Menu -->
+    <div class="floating-tooltip" id="tooltip">
+      <span class="tooltip-text" id="tooltip-text">Converting to PDF</span>
+    </div>
+
+    <!-- Radial Menu -->
+    <div class="radial-menu-wrapper" id="radial-menu">
+      <!-- Base Frosted Glass Ring (Center Hole Punched via Mask) -->
+      <div class="glass-ring-base"></div>
+
+      <!-- SVG Sectors and Thin Separators (Center (180, 180), R=180, r=65) -->
+      <svg class="segments-svg" viewBox="0 0 360 360">
+        <!-- 8 Annular Sectors -->
+        <path id="sector-0" class="sector" data-index="0" d="M 111.12 13.73 A 180 180 0 0 1 248.88 13.73 L 204.87 119.90 A 65 65 0 0 0 155.13 119.90 Z" />
+        <path id="sector-1" class="sector" data-index="1" d="M 248.88 13.73 A 180 180 0 0 1 346.27 111.12 L 240.10 155.13 A 65 65 0 0 0 204.87 119.90 Z" />
+        <path id="sector-2" class="sector" data-index="2" d="M 346.27 111.12 A 180 180 0 0 1 346.27 248.88 L 240.10 204.87 A 65 65 0 0 0 240.10 155.13 Z" />
+        <path id="sector-3" class="sector" data-index="3" d="M 346.27 248.88 A 180 180 0 0 1 248.88 346.27 L 204.87 240.10 A 65 65 0 0 0 240.10 204.87 Z" />
+        <path id="sector-4" class="sector" data-index="4" d="M 248.88 346.27 A 180 180 0 0 1 111.12 346.27 L 155.13 240.10 A 65 65 0 0 0 204.87 240.10 Z" />
+        <path id="sector-5" class="sector" data-index="5" d="M 111.12 346.27 A 180 180 0 0 1 13.73 248.88 L 119.90 204.87 A 65 65 0 0 0 155.13 240.10 Z" />
+        <path id="sector-6" class="sector" data-index="6" d="M 13.73 248.88 A 180 180 0 0 1 13.73 111.12 L 119.90 155.13 A 65 65 0 0 0 119.90 204.87 Z" />
+        <path id="sector-7" class="sector" data-index="7" d="M 13.73 111.12 A 180 180 0 0 1 111.12 13.73 L 155.13 119.90 A 65 65 0 0 0 119.90 155.13 Z" />
+
+        <!-- Outer and Inner Border Rings -->
+        <circle cx="180" cy="180" r="180" class="ring-border" />
+        <circle cx="180" cy="180" r="65" class="ring-border" />
+
+        <!-- 8 Thin Separators (rgba(255, 255, 255, 0.4)) -->
+        <line x1="155.13" y1="119.90" x2="111.12" y2="13.73" class="separator-line" />
+        <line x1="204.87" y1="119.90" x2="248.88" y2="13.73" class="separator-line" />
+        <line x1="240.10" y1="155.13" x2="346.27" y2="111.12" class="separator-line" />
+        <line x1="240.10" y1="204.87" x2="346.27" y2="248.88" class="separator-line" />
+        <line x1="204.87" y1="240.10" x2="248.88" y2="346.27" class="separator-line" />
+        <line x1="155.13" y1="240.10" x2="111.12" y2="346.27" class="separator-line" />
+        <line x1="119.90" y1="204.87" x2="13.73" y2="248.88" class="separator-line" />
+        <line x1="119.90" y1="155.13" x2="13.73" y2="111.12" class="separator-line" />
+      </svg>
+
+      <!-- 8 Segment Labels (rmid = 122.5) -->
+      <div class="labels-container">
+        <div id="label-0" class="segment-label" style="left: 180.00px; top: 57.50px;">PDF</div>
+        <div id="label-1" class="segment-label" style="left: 266.62px; top: 93.38px;">JPG</div>
+        <div id="label-2" class="segment-label" style="left: 302.50px; top: 180.00px;">PNG</div>
+        <div id="label-3" class="segment-label" style="left: 266.62px; top: 266.62px;">WEBP</div>
+        <div id="label-4" class="segment-label" style="left: 180.00px; top: 302.50px;">HEIC</div>
+        <div id="label-5" class="segment-label" style="left: 93.38px; top: 266.62px;">TIFF</div>
+        <div id="label-6" class="segment-label" style="left: 57.50px; top: 180.00px;">AVIF</div>
+        <div id="label-7" class="segment-label" style="left: 93.38px; top: 93.38px;">BMP</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 4 Menu Datasets
+    const MENUS = {
+      DEFAULT: ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'],
+      CTRL:    ['COMPRESS', 'METADATA', 'EDIT', 'REDACT', 'CROP', 'ADD BG', 'WATERMARK', 'RESIZE'],
+      SHIFT:   ['ENCRYPT', 'OCR TEXT', 'VECTORIZE', 'ENHANCE', 'REMOVE BG', 'SPLIT', 'MERGE', 'UPSCALER'],
+      ALT:     ['QUICK LOOK', 'RENAME', 'TRASH', 'DUPLICATE', 'ARCHIVE', 'SHARE', 'TAG', 'GET INFO']
+    };
+
+    let currentMenu = 'DEFAULT';
+    let currentHoveredIndex = -1;
+
+    /**
+     * Re-renders the text in the 8 segments based on the active modifier key.
+     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'SHIFT' | 'ALT'
+     */
+    window.switchMenu = function(modifier) {
+      const mod = (modifier || 'DEFAULT').toUpperCase();
+      if (!MENUS[mod]) return;
+      if (currentMenu === mod) return;
+
+      currentMenu = mod;
+      const items = MENUS[mod];
+
+      for (let i = 0; i < 8; i++) {
+        const label = document.getElementById(`label-${i}`);
+        if (label) {
+          label.style.opacity = '0';
+          setTimeout(() => {
+            label.textContent = items[i];
+            label.style.opacity = '1';
+          }, 60);
+        }
+      }
+
+      // If currently hovering a segment, immediately update the tooltip
+      if (currentHoveredIndex >= 0 && currentHoveredIndex < 8) {
+        updateTooltip(items[currentHoveredIndex]);
+      }
+    };
+
+    /**
+     * Updates floating tooltip text based on format or action.
+     */
+    function updateTooltip(item) {
+      const tooltip = document.getElementById('tooltip');
+      const tooltipText = document.getElementById('tooltip-text');
+      if (!tooltipText || !tooltip) return;
+
+      if (currentMenu === 'DEFAULT') {
+        tooltipText.textContent = `Converting to ${item}`;
+      } else {
+        tooltipText.textContent = `Action: ${item}`;
+      }
+      tooltip.classList.add('visible');
+    }
+
+    /**
+     * Highlights the hovered segment, updates and displays the floating tooltip.
+     * @param {number} x - Cursor X coordinate (window/widget space)
+     * @param {number} y - Cursor Y coordinate (window/widget space)
+     */
+    window.updateHover = function(x, y) {
+      const menu = document.getElementById('radial-menu');
+      if (!menu) return;
+
+      const rect = menu.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+
+      const dx = x - cx;
+      const dy = y - cy;
+      const dist = Math.hypot(dx, dy);
+
+      const innerRadius = 65;
+      const outerRadius = 180;
+
+      // Inside center hole or outside radial ring -> clear hover
+      if (dist < innerRadius || dist > outerRadius) {
+        window.clearHover();
+        return;
+      }
+
+      // Calculate angle relative to 12 o'clock (North = 0 deg, clockwise)
+      const rad = Math.atan2(dy, dx);
+      const deg = (rad * 180 / Math.PI + 90 + 360) % 360;
+      const index = Math.floor(((deg + 22.5) % 360) / 45);
+
+      if (index === currentHoveredIndex) {
+        return;
+      }
+
+      currentHoveredIndex = index;
+      const activeItems = MENUS[currentMenu] || MENUS['DEFAULT'];
+      const activeItem = activeItems[index];
+
+      // Update segment hover state (Solid translucent white, dark text)
+      for (let i = 0; i < 8; i++) {
+        const sec = document.getElementById(`sector-${i}`);
+        const lbl = document.getElementById(`label-${i}`);
+        if (i === index) {
+          if (sec) sec.classList.add('active');
+          if (lbl) lbl.classList.add('active');
+        } else {
+          if (sec) sec.classList.remove('active');
+          if (lbl) lbl.classList.remove('active');
+        }
+      }
+
+      // Show floating tooltip above menu
+      updateTooltip(activeItem);
+    };
+
+    /**
+     * Hides the floating tooltip and removes segment highlights.
+     */
+    window.clearHover = function() {
+      if (currentHoveredIndex === -1) {
+        const tooltip = document.getElementById('tooltip');
+        if (tooltip) tooltip.classList.remove('visible');
+        return;
+      }
+
+      currentHoveredIndex = -1;
+
+      for (let i = 0; i < 8; i++) {
+        const sec = document.getElementById(`sector-${i}`);
+        const lbl = document.getElementById(`label-${i}`);
+        if (sec) sec.classList.remove('active');
+        if (lbl) lbl.classList.remove('active');
+      }
+
+      const tooltip = document.getElementById('tooltip');
+      if (tooltip) {
+        tooltip.classList.remove('visible');
+      }
+    };
+
+    // Browser interaction support (Mouse movement and Modifier keys)
+    window.addEventListener('mousemove', (e) => {
+      window.updateHover(e.clientX, e.clientY);
+    });
+
+    window.addEventListener('mouseleave', () => {
+      window.clearHover();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Control') window.switchMenu('CTRL');
+      else if (e.key === 'Shift') window.switchMenu('SHIFT');
+      else if (e.key === 'Alt') window.switchMenu('ALT');
+    });
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Control' || e.key === 'Shift' || e.key === 'Alt') {
+        if (e.shiftKey) window.switchMenu('SHIFT');
+        else if (e.ctrlKey) window.switchMenu('CTRL');
+        else if (e.altKey) window.switchMenu('ALT');
+        else window.switchMenu('DEFAULT');
+      }
+    });
+  </script>
+</body>
+</html>
