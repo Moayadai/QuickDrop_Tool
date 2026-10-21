@@ -13,7 +13,7 @@
       -webkit-user-select: none;
     }
 
-    /* 1. Base Layout: Full-screen, transparent background */
+    /* Base Layout: Full-screen, transparent background */
     html, body {
       width: 100vw;
       height: 100vh;
@@ -37,66 +37,30 @@
       align-items: center;
     }
 
-    /* 6. Floating Tooltip: Pill-shaped div floating ABOVE the ring */
-    .floating-tooltip {
-      position: absolute;
-      top: 14px;
-      left: 50%;
-      transform: translateX(-50%) translateY(-6px) scale(0.96);
-      padding: 8px 24px;
-      border-radius: 9999px;
-      background: rgba(255, 255, 255, 0.92);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      border: 1px solid rgba(255, 255, 255, 0.85);
-      box-shadow: 
-        0 10px 24px rgba(0, 0, 0, 0.16),
-        0 2px 6px rgba(0, 0, 0, 0.08),
-        inset 0 1px 1.5px rgba(255, 255, 255, 1);
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.15s cubic-bezier(0.16, 1, 0.3, 1), transform 0.15s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 1000;
-      white-space: nowrap;
-    }
-
-    .floating-tooltip.visible {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0) scale(1);
-    }
-
-    .tooltip-text {
-      font-size: 14px;
-      font-weight: 700;
-      color: #111111;
-      letter-spacing: -0.2px;
-    }
-
-    /* 2 & 3. Radial Ring Container (380x380px) */
+    /* 380x380 Radial Flower Container */
     .radial-menu {
       position: relative;
       width: 380px;
       height: 380px;
-      filter: drop-shadow(0 14px 32px rgba(0, 0, 0, 0.14));
+      filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.16));
     }
 
-    /* 3. The Radial Ring Base: Light, bright whitish glass (rgba(255, 255, 255, 0.25)) */
-    /* Center Hole: CSS clip-path punches out radius 75px, leaving it 100% transparent */
-    .glass-ring-backdrop {
+    /* 1. Apple Glass (Default): backdrop-filter: blur(30px) clipped to petals */
+    .glass-petals-backdrop {
       position: absolute;
       top: 0;
       left: 0;
       width: 380px;
       height: 380px;
       background: rgba(255, 255, 255, 0.25);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
-      clip-path: path(evenodd, 'M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z');
-      -webkit-clip-path: path(evenodd, 'M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z');
+      backdrop-filter: blur(30px) saturate(180%);
+      -webkit-backdrop-filter: blur(30px) saturate(180%);
+      clip-path: url(#petals-clip);
+      -webkit-clip-path: url(#petals-clip);
       pointer-events: none;
     }
 
-    /* SVG Segments Overlay (380x380) */
+    /* SVG Flower Petals Overlay (380x380) */
     .radial-svg {
       position: absolute;
       top: 0;
@@ -107,102 +71,151 @@
       pointer-events: auto;
     }
 
-    /* 5. Hover State: Solid bright white (rgba(255, 255, 255, 0.95)) */
-    .segment-slice {
-      fill: rgba(255, 255, 255, 0.001);
+    /* 1. Brighter Glass Base: Glowing milky frosted glass rgba(255, 255, 255, 0.75) */
+    /* 2. Edge Highlight: Crisp 1px stroke of rgba(255, 255, 255, 0.9) */
+    .petal-slice {
+      fill: rgba(255, 255, 255, 0.75);
+      stroke: rgba(255, 255, 255, 0.9);
+      stroke-width: 1px;
       cursor: pointer;
-      transition: fill 0.15s ease;
+      transition: fill 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                  stroke 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                  filter 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      filter: drop-shadow(0 4px 14px rgba(0, 0, 0, 0.1));
     }
 
-    .segment-slice.active {
-      fill: rgba(255, 255, 255, 0.95);
-    }
-
-    /* 4. Thin Separators & Circular Borders */
-    .separator-line {
-      stroke: rgba(255, 255, 255, 0.5);
+    /* 4. Tangerine Hover (Vibrant): Warm, glowing Tangerine Orange rgba(255, 100, 0, 0.8) */
+    .petal-slice.active {
+      fill: rgba(255, 100, 0, 0.8);
+      stroke: rgba(255, 255, 255, 0.95);
       stroke-width: 1.5px;
-      stroke-linecap: round;
-      pointer-events: none;
+      filter: drop-shadow(0 0 16px rgba(255, 100, 0, 0.75))
+              drop-shadow(0 6px 20px rgba(255, 100, 0, 0.45));
     }
 
-    .circular-border {
-      fill: none;
-      stroke: rgba(255, 255, 255, 0.5);
-      stroke-width: 1.5px;
-      pointer-events: none;
-    }
-
-    /* 4. Readability: SVG Text Labels with Dark Bold Visible Text */
+    /* 3. Text Contrast: Solid black (#000000) and bold inside unhovered petals */
     .segment-label {
       font-size: 13.5px;
       font-weight: 800;
       letter-spacing: 0.5px;
-      fill: #0d0d0f;
+      fill: #000000;
       text-anchor: middle;
       dominant-baseline: central;
       pointer-events: none;
-      transition: fill 0.15s ease;
-      filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.95)) drop-shadow(0 1px 2px rgba(255, 255, 255, 0.9));
+      transition: fill 0.18s ease;
+      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.8));
     }
 
+    /* When petal is hovered in glowing Tangerine Orange, text turns crisp white */
     .segment-label.active {
-      fill: #000000;
+      fill: #ffffff;
       font-weight: 900;
-      filter: none;
+      filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
+    }
+
+    /* 2. The Center Pill: Frosted glass bubble inside the transparent center hole */
+    .center-pill-container {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.92);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+                  transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+      z-index: 30;
+    }
+
+    .center-pill-container.visible {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    .center-pill {
+      padding: 7px 18px;
+      border-radius: 9999px;
+      background: rgba(255, 255, 255, 0.6);
+      backdrop-filter: blur(25px) saturate(180%);
+      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      border: 1px solid rgba(255, 255, 255, 0.85);
+      box-shadow: 
+        0 8px 24px rgba(0, 0, 0, 0.12),
+        0 2px 8px rgba(255, 100, 0, 0.22),
+        inset 0 1px 1.5px rgba(255, 255, 255, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      white-space: nowrap;
+      max-width: 136px;
+    }
+
+    .pill-category {
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 1.2px;
+      text-transform: uppercase;
+      color: #ff6400;
+      margin-bottom: 2px;
+      line-height: 1;
+    }
+
+    .pill-action {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: -0.2px;
+      color: #111111;
+      text-align: center;
+      line-height: 1.15;
     }
   </style>
 </head>
 <body>
   <div class="app-canvas">
-    <!-- 6. Floating Tooltip above the ring -->
-    <div class="floating-tooltip" id="tooltip">
-      <span class="tooltip-text" id="tooltip-text">Converting to PDF</span>
-    </div>
-
-    <!-- 2. The Radial Ring (380x380px) -->
+    <!-- 380x380 Flower Radial Menu -->
     <div class="radial-menu" id="radial-menu">
-      <!-- 2 & 3. Bright Whitish Glass Backdrop with Masked Center Hole -->
-      <div class="glass-ring-backdrop"></div>
+      <!-- 3. Apple Frosted Glass Backdrop (blur: 30px) clipped to the 8 petals -->
+      <div class="glass-petals-backdrop"></div>
 
-      <!-- SVG Slices, Separators, and Text Elements (Center: 190, 190 | Outer R: 190 | Inner r: 75) -->
+      <!-- 2. The Center Pill: Frosted glass bubble inside the transparent center hole -->
+      <div class="center-pill-container" id="tooltip">
+        <div class="center-pill">
+          <div class="pill-category" id="tooltip-category">Convert to</div>
+          <div class="pill-action" id="tooltip-text">PDF</div>
+        </div>
+      </div>
+
+      <!-- SVG Flower Petals (380x380) -->
       <svg class="radial-svg" viewBox="0 0 380 380">
-        <!-- 3. Base Whitish Glass Ring (rgba(255, 255, 255, 0.25)) -->
-        <path class="glass-ring-base" fill="rgba(255, 255, 255, 0.25)" fill-rule="evenodd" d="M 190 0 A 190 190 0 1 0 190 380 A 190 190 0 1 0 190 0 M 190 115 A 75 75 0 1 1 190 265 A 75 75 0 1 1 190 115 Z" />
+        <defs>
+          <!-- ClipPath for 8 distinct rounded petals with visible gaps -->
+          <clipPath id="petals-clip" clipPathUnits="userSpaceOnUse">
+            <path d="M 146.18 11.29 A 184 184 0 0 1 233.82 11.29 A 14 14 0 0 1 243.76 29.33 L 217.10 109.00 A 10 10 0 0 1 205.57 115.61 A 76 76 0 0 0 174.43 115.61 A 10 10 0 0 1 162.90 109.00 L 136.24 29.33 A 14 14 0 0 1 146.18 11.29 Z M 285.38 32.65 A 184 184 0 0 1 347.35 94.62 A 14 14 0 0 1 341.62 114.40 L 266.44 151.89 A 10 10 0 0 1 253.61 148.41 A 76 76 0 0 0 231.59 126.39 A 10 10 0 0 1 228.11 113.56 L 265.60 38.38 A 14 14 0 0 1 285.38 32.65 Z M 368.71 146.18 A 184 184 0 0 1 368.71 233.82 A 14 14 0 0 1 350.67 243.76 L 271.00 217.10 A 10 10 0 0 1 264.39 205.57 A 76 76 0 0 0 264.39 174.43 A 10 10 0 0 1 271.00 162.90 L 350.67 136.24 A 14 14 0 0 1 368.71 146.18 Z M 347.35 285.38 A 184 184 0 0 1 285.38 347.35 A 14 14 0 0 1 265.60 341.62 L 228.11 266.44 A 10 10 0 0 1 231.59 253.61 A 76 76 0 0 0 253.61 231.59 A 10 10 0 0 1 266.44 228.11 L 341.62 265.60 A 14 14 0 0 1 347.35 285.38 Z M 233.82 368.71 A 184 184 0 0 1 146.18 368.71 A 14 14 0 0 1 136.24 350.67 L 162.90 271.00 A 10 10 0 0 1 174.43 264.39 A 76 76 0 0 0 205.57 264.39 A 10 10 0 0 1 217.10 271.00 L 243.76 350.67 A 14 14 0 0 1 233.82 368.71 Z M 94.62 347.35 A 184 184 0 0 1 32.65 285.38 A 14 14 0 0 1 38.38 265.60 L 113.56 228.11 A 10 10 0 0 1 126.39 231.59 A 76 76 0 0 0 148.41 253.61 A 10 10 0 0 1 151.89 266.44 L 114.40 341.62 A 14 14 0 0 1 94.62 347.35 Z M 11.29 233.82 A 184 184 0 0 1 11.29 146.18 A 14 14 0 0 1 29.33 136.24 L 109.00 162.90 A 10 10 0 0 1 115.61 174.43 A 76 76 0 0 0 115.61 205.57 A 10 10 0 0 1 109.00 217.10 L 29.33 243.76 A 14 14 0 0 1 11.29 233.82 Z M 32.65 94.62 A 184 184 0 0 1 94.62 32.65 A 14 14 0 0 1 114.40 38.38 L 151.89 113.56 A 10 10 0 0 1 148.41 126.39 A 76 76 0 0 0 126.39 148.41 A 10 10 0 0 1 113.56 151.89 L 38.38 114.40 A 14 14 0 0 1 32.65 94.62 Z" />
+          </clipPath>
+        </defs>
 
-        <!-- 8 Annular Segments -->
-        <path id="slice-0" class="segment-slice" data-index="0" data-format="PDF" d="M 117.29 14.46 A 190 190 0 0 1 262.71 14.46 L 218.70 120.71 A 75 75 0 0 0 161.30 120.71 Z" />
-        <path id="slice-1" class="segment-slice" data-index="1" data-format="JPG" d="M 262.71 14.46 A 190 190 0 0 1 365.54 117.29 L 259.29 161.30 A 75 75 0 0 0 218.70 120.71 Z" />
-        <path id="slice-2" class="segment-slice" data-index="2" data-format="PNG" d="M 365.54 117.29 A 190 190 0 0 1 365.54 262.71 L 259.29 218.70 A 75 75 0 0 0 259.29 161.30 Z" />
-        <path id="slice-3" class="segment-slice" data-index="3" data-format="WEBP" d="M 365.54 262.71 A 190 190 0 0 1 262.71 365.54 L 218.70 259.29 A 75 75 0 0 0 259.29 218.70 Z" />
-        <path id="slice-4" class="segment-slice" data-index="4" data-format="HEIC" d="M 262.71 365.54 A 190 190 0 0 1 117.29 365.54 L 161.30 259.29 A 75 75 0 0 0 218.70 259.29 Z" />
-        <path id="slice-5" class="segment-slice" data-index="5" data-format="TIFF" d="M 117.29 365.54 A 190 190 0 0 1 14.46 262.71 L 120.71 218.70 A 75 75 0 0 0 161.30 259.29 Z" />
-        <path id="slice-6" class="segment-slice" data-index="6" data-format="AVIF" d="M 14.46 262.71 A 190 190 0 0 1 14.46 117.29 L 120.71 161.30 A 75 75 0 0 0 120.71 218.70 Z" />
-        <path id="slice-7" class="segment-slice" data-index="7" data-format="BMP" d="M 14.46 117.29 A 190 190 0 0 1 117.29 14.46 L 161.30 120.71 A 75 75 0 0 0 120.71 161.30 Z" />
+        <!-- 1. 8 Distinct, Separated Flower Petals with Visible Gaps & Rounded Corners -->
+        <path id="slice-0" class="petal-slice" data-index="0" data-format="PDF" d="M 146.18 11.29 A 184 184 0 0 1 233.82 11.29 A 14 14 0 0 1 243.76 29.33 L 217.10 109.00 A 10 10 0 0 1 205.57 115.61 A 76 76 0 0 0 174.43 115.61 A 10 10 0 0 1 162.90 109.00 L 136.24 29.33 A 14 14 0 0 1 146.18 11.29 Z" />
+        <path id="slice-1" class="petal-slice" data-index="1" data-format="JPG" d="M 285.38 32.65 A 184 184 0 0 1 347.35 94.62 A 14 14 0 0 1 341.62 114.40 L 266.44 151.89 A 10 10 0 0 1 253.61 148.41 A 76 76 0 0 0 231.59 126.39 A 10 10 0 0 1 228.11 113.56 L 265.60 38.38 A 14 14 0 0 1 285.38 32.65 Z" />
+        <path id="slice-2" class="petal-slice" data-index="2" data-format="PNG" d="M 368.71 146.18 A 184 184 0 0 1 368.71 233.82 A 14 14 0 0 1 350.67 243.76 L 271.00 217.10 A 10 10 0 0 1 264.39 205.57 A 76 76 0 0 0 264.39 174.43 A 10 10 0 0 1 271.00 162.90 L 350.67 136.24 A 14 14 0 0 1 368.71 146.18 Z" />
+        <path id="slice-3" class="petal-slice" data-index="3" data-format="WEBP" d="M 347.35 285.38 A 184 184 0 0 1 285.38 347.35 A 14 14 0 0 1 265.60 341.62 L 228.11 266.44 A 10 10 0 0 1 231.59 253.61 A 76 76 0 0 0 253.61 231.59 A 10 10 0 0 1 266.44 228.11 L 341.62 265.60 A 14 14 0 0 1 347.35 285.38 Z" />
+        <path id="slice-4" class="petal-slice" data-index="4" data-format="HEIC" d="M 233.82 368.71 A 184 184 0 0 1 146.18 368.71 A 14 14 0 0 1 136.24 350.67 L 162.90 271.00 A 10 10 0 0 1 174.43 264.39 A 76 76 0 0 0 205.57 264.39 A 10 10 0 0 1 217.10 271.00 L 243.76 350.67 A 14 14 0 0 1 233.82 368.71 Z" />
+        <path id="slice-5" class="petal-slice" data-index="5" data-format="TIFF" d="M 94.62 347.35 A 184 184 0 0 1 32.65 285.38 A 14 14 0 0 1 38.38 265.60 L 113.56 228.11 A 10 10 0 0 1 126.39 231.59 A 76 76 0 0 0 148.41 253.61 A 10 10 0 0 1 151.89 266.44 L 114.40 341.62 A 14 14 0 0 1 94.62 347.35 Z" />
+        <path id="slice-6" class="petal-slice" data-index="6" data-format="AVIF" d="M 11.29 233.82 A 184 184 0 0 1 11.29 146.18 A 14 14 0 0 1 29.33 136.24 L 109.00 162.90 A 10 10 0 0 1 115.61 174.43 A 76 76 0 0 0 115.61 205.57 A 10 10 0 0 1 109.00 217.10 L 29.33 243.76 A 14 14 0 0 1 11.29 233.82 Z" />
+        <path id="slice-7" class="petal-slice" data-index="7" data-format="BMP" d="M 32.65 94.62 A 184 184 0 0 1 94.62 32.65 A 14 14 0 0 1 114.40 38.38 L 151.89 113.56 A 10 10 0 0 1 148.41 126.39 A 76 76 0 0 0 126.39 148.41 A 10 10 0 0 1 113.56 151.89 L 38.38 114.40 A 14 14 0 0 1 32.65 94.62 Z" />
 
-        <!-- Outer & Inner Circular Borders -->
-        <circle cx="190" cy="190" r="190" class="circular-border" />
-        <circle cx="190" cy="190" r="75" class="circular-border" />
-
-        <!-- 8 Separators radiating from inner hole (75px) to outer edge (190px) -->
-        <line x1="161.30" y1="120.71" x2="117.29" y2="14.46" class="separator-line" />
-        <line x1="218.70" y1="120.71" x2="262.71" y2="14.46" class="separator-line" />
-        <line x1="259.29" y1="161.30" x2="365.54" y2="117.29" class="separator-line" />
-        <line x1="259.29" y1="218.70" x2="365.54" y2="262.71" class="separator-line" />
-        <line x1="218.70" y1="259.29" x2="262.71" y2="365.54" class="separator-line" />
-        <line x1="161.30" y1="259.29" x2="117.29" y2="365.54" class="separator-line" />
-        <line x1="120.71" y1="218.70" x2="14.46" y2="262.71" class="separator-line" />
-        <line x1="120.71" y1="161.30" x2="14.46" y2="117.29" class="separator-line" />
-
-        <!-- 1. 8 SVG <text> Elements with IDs label-0 to label-7 (rmid = 132.5) -->
-        <text id="label-0" class="segment-label" x="190.00" y="57.50">PDF</text>
-        <text id="label-1" class="segment-label" x="283.69" y="96.31">JPG</text>
-        <text id="label-2" class="segment-label" x="322.50" y="190.00">PNG</text>
-        <text id="label-3" class="segment-label" x="283.69" y="283.69">WEBP</text>
-        <text id="label-4" class="segment-label" x="190.00" y="322.50">HEIC</text>
-        <text id="label-5" class="segment-label" x="96.31" y="283.69">TIFF</text>
-        <text id="label-6" class="segment-label" x="57.50" y="190.00">AVIF</text>
-        <text id="label-7" class="segment-label" x="96.31" y="96.31">BMP</text>
+        <!-- Petal Labels: Centered in each petal (Rmid = 130px) -->
+        <text id="label-0" class="segment-label" x="190.00" y="60.00">PDF</text>
+        <text id="label-1" class="segment-label" x="281.92" y="98.08">JPG</text>
+        <text id="label-2" class="segment-label" x="320.00" y="190.00">PNG</text>
+        <text id="label-3" class="segment-label" x="281.92" y="281.92">WEBP</text>
+        <text id="label-4" class="segment-label" x="190.00" y="320.00">HEIC</text>
+        <text id="label-5" class="segment-label" x="98.08" y="281.92">TIFF</text>
+        <text id="label-6" class="segment-label" x="60.00" y="190.00">AVIF</text>
+        <text id="label-7" class="segment-label" x="98.08" y="98.08">BMP</text>
       </svg>
     </div>
   </div>
@@ -220,19 +233,20 @@
     let currentHoverIndex = -1;
 
     /**
-     * Updates the floating tooltip dynamically based on the current text of the hovered segment.
+     * Updates the center pill text dynamically based on the current active petal.
      */
     function updateTooltipText(index) {
       const label = document.getElementById(`label-${index}`);
       if (!label) return;
       const currentText = label.textContent.trim();
       const tooltipText = document.getElementById('tooltip-text');
-      if (!tooltipText) return;
+      const tooltipCategory = document.getElementById('tooltip-category');
 
-      if (currentModifier === 'DEFAULT') {
-        tooltipText.textContent = `Converting to ${currentText}`;
-      } else {
-        tooltipText.textContent = `Action: ${currentText}`;
+      if (tooltipText) {
+        tooltipText.textContent = currentText;
+      }
+      if (tooltipCategory) {
+        tooltipCategory.textContent = (currentModifier === 'DEFAULT') ? 'Convert to' : 'Action';
       }
     }
 
@@ -250,16 +264,20 @@
         if (textEl) {
           textEl.textContent = menuArray[i];
         }
+        const sliceEl = document.getElementById(`slice-${i}`);
+        if (sliceEl) {
+          sliceEl.dataset.format = menuArray[i];
+        }
       }
 
-      // If a segment is currently hovered, immediately update the tooltip text
+      // If a petal is currently hovered, immediately update the center action pill
       if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
         updateTooltipText(currentHoverIndex);
       }
     };
 
     /**
-     * Updates hover state, highlights active segment, and reveals floating tooltip.
+     * Updates hover state, highlights active petal in glowing Tangerine Orange, and reveals center action pill.
      * @param {number} x - Cursor X coordinate (window space)
      * @param {number} y - Cursor Y coordinate (window space)
      */
@@ -275,8 +293,8 @@
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
 
-      // Center hole: 75px radius | Outer edge: 190px radius
-      if (dist < 75 || dist > 190) {
+      // Center hole: 76px radius | Outer edge: 184px radius
+      if (dist < 76 || dist > 184) {
         window.clearHover();
         return;
       }
@@ -289,7 +307,7 @@
       if (index === currentHoverIndex) return;
       currentHoverIndex = index;
 
-      // Update segment hover state (solid bright white)
+      // Update petal hover state (glowing Tangerine Orange)
       for (let i = 0; i < 8; i++) {
         const slice = document.getElementById(`slice-${i}`);
         const label = document.getElementById(`label-${i}`);
@@ -302,7 +320,7 @@
         }
       }
 
-      // Show pill tooltip reading current text dynamically
+      // Show active action in glassy center pill
       updateTooltipText(index);
       const tooltip = document.getElementById('tooltip');
       if (tooltip) {
@@ -311,7 +329,7 @@
     };
 
     /**
-     * Clears all segment highlights and hides the tooltip.
+     * Clears all petal highlights and hides the center action pill.
      */
     window.clearHover = function() {
       if (currentHoverIndex === -1) {
