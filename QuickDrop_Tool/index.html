@@ -42,25 +42,14 @@
       position: relative;
       width: 380px;
       height: 380px;
-      filter: drop-shadow(0 14px 34px rgba(0, 0, 0, 0.16));
     }
 
-    /* 1. Apple Glass (Default): backdrop-filter: blur(25px) clipped to petals */
+    /* Backdrop element disabled to prevent Linux Skia compositor crashes */
     .glass-petals-backdrop {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 380px;
-      height: 380px;
-      background: transparent;
-      backdrop-filter: blur(25px);
-      -webkit-backdrop-filter: blur(25px);
-      clip-path: url(#petals-clip);
-      -webkit-clip-path: url(#petals-clip);
-      pointer-events: none;
+      display: none;
     }
 
-    /* SVG Flower Petals Overlay (380x380) with macOS Frosted Glass blur */
+    /* SVG Flower Petals Overlay (380x380) */
     .radial-svg {
       position: absolute;
       top: 0;
@@ -69,40 +58,34 @@
       height: 100%;
       display: block;
       pointer-events: auto;
-      backdrop-filter: blur(25px);
-      -webkit-backdrop-filter: blur(25px);
     }
 
     /* Glass Donut Track: Circular container ring behind all petals */
     .donut-track {
-      fill: rgba(255, 255, 255, 0.08);
-      stroke: rgba(255, 255, 255, 0.08);
+      fill: rgba(255, 255, 255, 0.1);
+      stroke: rgba(255, 255, 255, 0.1);
       pointer-events: none;
     }
 
-    /* 1. 3D Creamy Glass Petals: Warm translucent cream rgba(255, 248, 235, 0.45) */
-    /* 2. Glass Edges: Subtle, crisp border/stroke of rgba(255, 255, 255, 0.6) */
+    /* 3. Milky Frosted Petals: Solid milky frosted white without shadows for safe Linux rendering */
+    /* Glass Edges: Subtle, crisp border/stroke of rgba(255, 255, 255, 0.6) */
     .petal-slice {
-      fill: rgba(255, 248, 235, 0.45);
+      fill: rgba(250, 245, 240, 0.85);
       stroke: rgba(255, 255, 255, 0.6);
       stroke-width: 1px;
       cursor: pointer;
       transition: fill 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                  stroke 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                  filter 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-      filter: drop-shadow(0px 8px 12px rgba(0, 0, 0, 0.25));
+                  stroke 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* 4. Tangerine Hover (Vibrant): Warm, glowing Tangerine Orange rgba(255, 100, 0, 0.8) */
+    /* 4. Tangerine Hover (Vibrant): Warm, glowing Tangerine Orange */
     .petal-slice.active {
-      fill: rgba(255, 100, 0, 0.8);
+      fill: rgba(255, 100, 0, 0.85);
       stroke: rgba(255, 255, 255, 0.95);
       stroke-width: 1.5px;
-      filter: drop-shadow(0 0 16px rgba(255, 100, 0, 0.75))
-              drop-shadow(0 6px 20px rgba(255, 100, 0, 0.45));
     }
 
-    /* 3. Text Contrast: Dark #222 inside unhovered petals for crisp readability */
+    /* Text Contrast: Dark #222 inside unhovered petals for crisp readability */
     .segment-label {
       font-size: 13.5px;
       font-weight: 800;
@@ -112,17 +95,15 @@
       dominant-baseline: central;
       pointer-events: none;
       transition: fill 0.18s ease;
-      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.9));
     }
 
     /* When petal is hovered in glowing Tangerine Orange, text turns crisp white */
     .segment-label.active {
       fill: #ffffff;
       font-weight: 900;
-      filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.45));
     }
 
-    /* 2. The Center Pill: Frosted glass bubble inside the transparent center hole */
+    /* The Center Pill: Simple clean bubble for center dynamic text */
     .center-pill-container {
       position: absolute;
       top: 50%;
@@ -146,14 +127,8 @@
     .center-pill {
       padding: 7px 18px;
       border-radius: 15px;
-      background: rgba(255, 255, 255, 0.3);
-      backdrop-filter: blur(25px) saturate(180%);
-      -webkit-backdrop-filter: blur(25px) saturate(180%);
+      background: rgba(255, 255, 255, 0.4);
       border: 1px solid rgba(255, 255, 255, 0.5);
-      box-shadow: 
-        0 8px 24px rgba(0, 0, 0, 0.12),
-        0 2px 8px rgba(255, 100, 0, 0.22),
-        inset 0 1px 1.5px rgba(255, 255, 255, 0.95);
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -202,25 +177,25 @@
         <defs>
           <!-- ClipPath for 8 distinct rounded petals with visible gaps -->
           <clipPath id="petals-clip" clipPathUnits="userSpaceOnUse">
-            <path d="M 146.18 11.29 A 184 184 0 0 1 233.82 11.29 A 14 14 0 0 1 243.76 29.33 L 217.10 109.00 A 10 10 0 0 1 205.57 115.61 A 76 76 0 0 0 174.43 115.61 A 10 10 0 0 1 162.90 109.00 L 136.24 29.33 A 14 14 0 0 1 146.18 11.29 Z M 285.38 32.65 A 184 184 0 0 1 347.35 94.62 A 14 14 0 0 1 341.62 114.40 L 266.44 151.89 A 10 10 0 0 1 253.61 148.41 A 76 76 0 0 0 231.59 126.39 A 10 10 0 0 1 228.11 113.56 L 265.60 38.38 A 14 14 0 0 1 285.38 32.65 Z M 368.71 146.18 A 184 184 0 0 1 368.71 233.82 A 14 14 0 0 1 350.67 243.76 L 271.00 217.10 A 10 10 0 0 1 264.39 205.57 A 76 76 0 0 0 264.39 174.43 A 10 10 0 0 1 271.00 162.90 L 350.67 136.24 A 14 14 0 0 1 368.71 146.18 Z M 347.35 285.38 A 184 184 0 0 1 285.38 347.35 A 14 14 0 0 1 265.60 341.62 L 228.11 266.44 A 10 10 0 0 1 231.59 253.61 A 76 76 0 0 0 253.61 231.59 A 10 10 0 0 1 266.44 228.11 L 341.62 265.60 A 14 14 0 0 1 347.35 285.38 Z M 233.82 368.71 A 184 184 0 0 1 146.18 368.71 A 14 14 0 0 1 136.24 350.67 L 162.90 271.00 A 10 10 0 0 1 174.43 264.39 A 76 76 0 0 0 205.57 264.39 A 10 10 0 0 1 217.10 271.00 L 243.76 350.67 A 14 14 0 0 1 233.82 368.71 Z M 94.62 347.35 A 184 184 0 0 1 32.65 285.38 A 14 14 0 0 1 38.38 265.60 L 113.56 228.11 A 10 10 0 0 1 126.39 231.59 A 76 76 0 0 0 148.41 253.61 A 10 10 0 0 1 151.89 266.44 L 114.40 341.62 A 14 14 0 0 1 94.62 347.35 Z M 11.29 233.82 A 184 184 0 0 1 11.29 146.18 A 14 14 0 0 1 29.33 136.24 L 109.00 162.90 A 10 10 0 0 1 115.61 174.43 A 76 76 0 0 0 115.61 205.57 A 10 10 0 0 1 109.00 217.10 L 29.33 243.76 A 14 14 0 0 1 11.29 233.82 Z M 32.65 94.62 A 184 184 0 0 1 94.62 32.65 A 14 14 0 0 1 114.40 38.38 L 151.89 113.56 A 10 10 0 0 1 148.41 126.39 A 76 76 0 0 0 126.39 148.41 A 10 10 0 0 1 113.56 151.89 L 38.38 114.40 A 14 14 0 0 1 32.65 94.62 Z" />
+            <path d="M 151.70 34.65 A 160 160 0 0 1 228.30 34.65 A 12 12 0 0 1 236.81 50.11 L 224.17 87.86 A 8 8 0 0 1 214.62 93.08 A 100 100 0 0 0 165.38 93.08 A 8 8 0 0 1 155.83 87.86 L 143.19 50.11 A 12 12 0 0 1 151.70 34.65 Z M 272.77 53.07 A 160 160 0 0 1 326.93 107.23 A 12 12 0 0 1 322.01 124.18 L 286.39 141.94 A 8 8 0 0 1 275.94 138.87 A 100 100 0 0 0 241.13 104.06 A 8 8 0 0 1 238.06 93.61 L 255.82 57.99 A 12 12 0 0 1 272.77 53.07 Z M 345.35 151.70 A 160 160 0 0 1 345.35 228.30 A 12 12 0 0 1 329.89 236.81 L 292.14 224.17 A 8 8 0 0 1 286.92 214.62 A 100 100 0 0 0 286.92 165.38 A 8 8 0 0 1 292.14 155.83 L 329.89 143.19 A 12 12 0 0 1 345.35 151.70 Z M 326.93 272.77 A 160 160 0 0 1 272.77 326.93 A 12 12 0 0 1 255.82 322.01 L 238.06 286.39 A 8 8 0 0 1 241.13 275.94 A 100 100 0 0 0 275.94 241.13 A 8 8 0 0 1 286.39 238.06 L 322.01 255.82 A 12 12 0 0 1 326.93 272.77 Z M 228.30 345.35 A 160 160 0 0 1 151.70 345.35 A 12 12 0 0 1 143.19 329.89 L 155.83 292.14 A 8 8 0 0 1 165.38 286.92 A 100 100 0 0 0 214.62 286.92 A 8 8 0 0 1 224.17 292.14 L 236.81 329.89 A 12 12 0 0 1 228.30 345.35 Z M 107.23 326.93 A 160 160 0 0 1 53.07 272.77 A 12 12 0 0 1 57.99 255.82 L 93.61 238.06 A 8 8 0 0 1 104.06 241.13 A 100 100 0 0 0 138.87 275.94 A 8 8 0 0 1 141.94 286.39 L 124.18 322.01 A 12 12 0 0 1 107.23 326.93 Z M 34.65 228.30 A 160 160 0 0 1 34.65 151.70 A 12 12 0 0 1 50.11 143.19 L 87.86 155.83 A 8 8 0 0 1 93.08 165.38 A 100 100 0 0 0 93.08 214.62 A 8 8 0 0 1 87.86 224.17 L 50.11 236.81 A 12 12 0 0 1 34.65 228.30 Z M 53.07 107.23 A 160 160 0 0 1 107.23 53.07 A 12 12 0 0 1 124.18 57.99 L 141.94 93.61 A 8 8 0 0 1 138.87 104.06 A 100 100 0 0 0 104.06 138.87 A 8 8 0 0 1 93.61 141.94 L 57.99 124.18 A 12 12 0 0 1 53.07 107.23 Z" />
           </clipPath>
         </defs>
 
         <!-- Glass Donut Track: Translucent circular ring that "holds" the petals -->
-        <circle class="donut-track" cx="190" cy="190" r="130" fill="rgba(255, 255, 255, 0.08)" stroke="rgba(255, 255, 255, 0.08)" stroke-width="108" />
+        <circle class="donut-track" cx="190" cy="190" r="130" fill="rgba(255, 255, 255, 0.1)" stroke="rgba(255, 255, 255, 0.1)" stroke-width="108" />
 
         <!-- 1. 8 Distinct, Separated Flower Petals with Visible Gaps & Rounded Corners -->
-        <path id="slice-0" class="petal-slice" data-index="0" data-format="PDF" d="M 146.18 11.29 A 184 184 0 0 1 233.82 11.29 A 14 14 0 0 1 243.76 29.33 L 217.10 109.00 A 10 10 0 0 1 205.57 115.61 A 76 76 0 0 0 174.43 115.61 A 10 10 0 0 1 162.90 109.00 L 136.24 29.33 A 14 14 0 0 1 146.18 11.29 Z" />
-        <path id="slice-1" class="petal-slice" data-index="1" data-format="JPG" d="M 285.38 32.65 A 184 184 0 0 1 347.35 94.62 A 14 14 0 0 1 341.62 114.40 L 266.44 151.89 A 10 10 0 0 1 253.61 148.41 A 76 76 0 0 0 231.59 126.39 A 10 10 0 0 1 228.11 113.56 L 265.60 38.38 A 14 14 0 0 1 285.38 32.65 Z" />
-        <path id="slice-2" class="petal-slice" data-index="2" data-format="PNG" d="M 368.71 146.18 A 184 184 0 0 1 368.71 233.82 A 14 14 0 0 1 350.67 243.76 L 271.00 217.10 A 10 10 0 0 1 264.39 205.57 A 76 76 0 0 0 264.39 174.43 A 10 10 0 0 1 271.00 162.90 L 350.67 136.24 A 14 14 0 0 1 368.71 146.18 Z" />
-        <path id="slice-3" class="petal-slice" data-index="3" data-format="WEBP" d="M 347.35 285.38 A 184 184 0 0 1 285.38 347.35 A 14 14 0 0 1 265.60 341.62 L 228.11 266.44 A 10 10 0 0 1 231.59 253.61 A 76 76 0 0 0 253.61 231.59 A 10 10 0 0 1 266.44 228.11 L 341.62 265.60 A 14 14 0 0 1 347.35 285.38 Z" />
-        <path id="slice-4" class="petal-slice" data-index="4" data-format="HEIC" d="M 233.82 368.71 A 184 184 0 0 1 146.18 368.71 A 14 14 0 0 1 136.24 350.67 L 162.90 271.00 A 10 10 0 0 1 174.43 264.39 A 76 76 0 0 0 205.57 264.39 A 10 10 0 0 1 217.10 271.00 L 243.76 350.67 A 14 14 0 0 1 233.82 368.71 Z" />
-        <path id="slice-5" class="petal-slice" data-index="5" data-format="TIFF" d="M 94.62 347.35 A 184 184 0 0 1 32.65 285.38 A 14 14 0 0 1 38.38 265.60 L 113.56 228.11 A 10 10 0 0 1 126.39 231.59 A 76 76 0 0 0 148.41 253.61 A 10 10 0 0 1 151.89 266.44 L 114.40 341.62 A 14 14 0 0 1 94.62 347.35 Z" />
-        <path id="slice-6" class="petal-slice" data-index="6" data-format="AVIF" d="M 11.29 233.82 A 184 184 0 0 1 11.29 146.18 A 14 14 0 0 1 29.33 136.24 L 109.00 162.90 A 10 10 0 0 1 115.61 174.43 A 76 76 0 0 0 115.61 205.57 A 10 10 0 0 1 109.00 217.10 L 29.33 243.76 A 14 14 0 0 1 11.29 233.82 Z" />
-        <path id="slice-7" class="petal-slice" data-index="7" data-format="BMP" d="M 32.65 94.62 A 184 184 0 0 1 94.62 32.65 A 14 14 0 0 1 114.40 38.38 L 151.89 113.56 A 10 10 0 0 1 148.41 126.39 A 76 76 0 0 0 126.39 148.41 A 10 10 0 0 1 113.56 151.89 L 38.38 114.40 A 14 14 0 0 1 32.65 94.62 Z" />
+        <path id="slice-0" class="petal-slice" data-index="0" data-format="PDF" d="M 151.70 34.65 A 160 160 0 0 1 228.30 34.65 A 12 12 0 0 1 236.81 50.11 L 224.17 87.86 A 8 8 0 0 1 214.62 93.08 A 100 100 0 0 0 165.38 93.08 A 8 8 0 0 1 155.83 87.86 L 143.19 50.11 A 12 12 0 0 1 151.70 34.65 Z" />
+        <path id="slice-1" class="petal-slice" data-index="1" data-format="JPG" d="M 272.77 53.07 A 160 160 0 0 1 326.93 107.23 A 12 12 0 0 1 322.01 124.18 L 286.39 141.94 A 8 8 0 0 1 275.94 138.87 A 100 100 0 0 0 241.13 104.06 A 8 8 0 0 1 238.06 93.61 L 255.82 57.99 A 12 12 0 0 1 272.77 53.07 Z" />
+        <path id="slice-2" class="petal-slice" data-index="2" data-format="PNG" d="M 345.35 151.70 A 160 160 0 0 1 345.35 228.30 A 12 12 0 0 1 329.89 236.81 L 292.14 224.17 A 8 8 0 0 1 286.92 214.62 A 100 100 0 0 0 286.92 165.38 A 8 8 0 0 1 292.14 155.83 L 329.89 143.19 A 12 12 0 0 1 345.35 151.70 Z" />
+        <path id="slice-3" class="petal-slice" data-index="3" data-format="WEBP" d="M 326.93 272.77 A 160 160 0 0 1 272.77 326.93 A 12 12 0 0 1 255.82 322.01 L 238.06 286.39 A 8 8 0 0 1 241.13 275.94 A 100 100 0 0 0 275.94 241.13 A 8 8 0 0 1 286.39 238.06 L 322.01 255.82 A 12 12 0 0 1 326.93 272.77 Z" />
+        <path id="slice-4" class="petal-slice" data-index="4" data-format="HEIC" d="M 228.30 345.35 A 160 160 0 0 1 151.70 345.35 A 12 12 0 0 1 143.19 329.89 L 155.83 292.14 A 8 8 0 0 1 165.38 286.92 A 100 100 0 0 0 214.62 286.92 A 8 8 0 0 1 224.17 292.14 L 236.81 329.89 A 12 12 0 0 1 228.30 345.35 Z" />
+        <path id="slice-5" class="petal-slice" data-index="5" data-format="TIFF" d="M 107.23 326.93 A 160 160 0 0 1 53.07 272.77 A 12 12 0 0 1 57.99 255.82 L 93.61 238.06 A 8 8 0 0 1 104.06 241.13 A 100 100 0 0 0 138.87 275.94 A 8 8 0 0 1 141.94 286.39 L 124.18 322.01 A 12 12 0 0 1 107.23 326.93 Z" />
+        <path id="slice-6" class="petal-slice" data-index="6" data-format="AVIF" d="M 34.65 228.30 A 160 160 0 0 1 34.65 151.70 A 12 12 0 0 1 50.11 143.19 L 87.86 155.83 A 8 8 0 0 1 93.08 165.38 A 100 100 0 0 0 93.08 214.62 A 8 8 0 0 1 87.86 224.17 L 50.11 236.81 A 12 12 0 0 1 34.65 228.30 Z" />
+        <path id="slice-7" class="petal-slice" data-index="7" data-format="BMP" d="M 53.07 107.23 A 160 160 0 0 1 107.23 53.07 A 12 12 0 0 1 124.18 57.99 L 141.94 93.61 A 8 8 0 0 1 138.87 104.06 A 100 100 0 0 0 104.06 138.87 A 8 8 0 0 1 93.61 141.94 L 57.99 124.18 A 12 12 0 0 1 53.07 107.23 Z" />
 
-        <!-- Center Pill: Glass bubble background for dynamic text -->
-        <rect id="center-pill-bg" class="center-pill-bg" x="130" y="166" width="120" height="48" rx="15" fill="rgba(255, 255, 255, 0.3)" stroke="rgba(255, 255, 255, 0.45)" stroke-width="1" pointer-events="none" />
+        <!-- Center Pill: Simple clean bubble for dynamic text -->
+        <rect id="center-pill-bg" class="center-pill-bg" x="130" y="166" width="120" height="48" rx="15" fill="rgba(255, 255, 255, 0.4)" stroke="rgba(255, 255, 255, 0.5)" stroke-width="1" pointer-events="none" />
 
         <!-- Petal Labels: Centered in each petal (Rmid = 130px) -->
         <text id="label-0" class="segment-label" x="190.00" y="60.00">PDF</text>
