@@ -6,6 +6,7 @@ import pillow_heif
 
 pillow_heif.register_heif_opener()
 import pillow_avif
+from rembg import remove
 
 from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt, QThread, QUrl, pyqtSignal
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
@@ -16,6 +17,7 @@ from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QProgressBar,
     QPushButton,
     QSlider,
     QSpinBox,
@@ -28,6 +30,7 @@ from PyQt6.QtWebEngineWidgets import QWebEngineView
 class ConversionWorker(QThread):
     """Background worker thread for asynchronous image conversions."""
 
+    started_processing = pyqtSignal()
     file_converted = pyqtSignal(str, str)
     conversion_failed = pyqtSignal(str, str)
     finished_all = pyqtSignal(int, int)
@@ -58,6 +61,46 @@ class ConversionWorker(QThread):
         self.target_format = target_format.strip().upper()
 
     def run(self) -> None:
+        self.started_processing.emit()
+        if self.target_format == "ADD BG":
+            success_count = 0
+            for file_path in self.file_paths:
+                abs_path = os.path.abspath(file_path)
+                if not os.path.isfile(abs_path):
+                    self.conversion_failed.emit(file_path, f"File not found: {file_path}")
+                    continue
+
+                try:
+                    # 1. Open the source image
+                    img = Image.open(abs_path)
+
+                    # 2. Run real rembg background removal
+                    output_img = remove(img)
+
+                    # 3. Determine output path in the same directory with _nobg.png
+                    dir_name = os.path.dirname(abs_path)
+                    base_name = os.path.splitext(os.path.basename(abs_path))[0]
+                    output_path = os.path.join(dir_name, f"{base_name}_nobg.png")
+
+                    # 4. Save output image to disk as PNG
+                    if isinstance(output_img, bytes):
+                        with open(output_path, "wb") as f:
+                            f.write(output_img)
+                    else:
+                        output_img.save(output_path, "PNG")
+
+                    # Verify the file exists on disk
+                    if os.path.isfile(output_path):
+                        success_count += 1
+                        self.file_converted.emit(file_path, output_path)
+                    else:
+                        self.conversion_failed.emit(file_path, f"Failed to save file: {output_path}")
+                except Exception as e:
+                    self.conversion_failed.emit(file_path, str(e))
+
+            self.finished_all.emit(success_count, len(self.file_paths))
+            return
+
         fmt_info = self.FORMAT_MAP.get(self.target_format)
         if not fmt_info:
             err = f"Unsupported conversion format: {self.target_format}"
@@ -102,6 +145,121 @@ class ConversionWorker(QThread):
                 self.conversion_failed.emit(file_path, str(e))
 
         self.finished_all.emit(success_count, len(self.file_paths))
+
+
+class LoadingDialog(QDialog):
+    """Frameless light frosted glass loading dialog with continuous indeterminate animation."""
+
+    def __init__(
+        self,
+        title: str = "Processing... Please wait",
+        subtitle: str = "",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Dialog
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(320, 130)
+
+        self._title = title
+        self._subtitle = subtitle
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        # Light frosted glass container (#f7f7f7) with rounded corners and subtle border
+        container = QFrame()
+        container.setObjectName("loadingContainer")
+        container.setStyleSheet("""
+            #loadingContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+            QProgressBar {
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 4px;
+                background-color: rgba(0, 0, 0, 0.06);
+                height: 8px;
+                text-align: center;
+            }
+            QProgressBar::chunk {
+                background-color: #ff5500;
+                border-radius: 4px;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        # Label: "Processing... Please wait"
+        self.title_label = QLabel(self._title)
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title_label.setStyleSheet(
+            "font-size: 15px; font-weight: 700; color: #222222;"
+        )
+        layout.addWidget(self.title_label)
+
+        if self._subtitle:
+            self.sub_label = QLabel(self._subtitle)
+            self.sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.sub_label.setStyleSheet(
+                "font-size: 12px; color: #666666; margin-top: -4px;"
+            )
+            layout.addWidget(self.sub_label)
+
+        # Continuous indeterminate progress bar (range 0 to 0)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 0)
+        self.progress_bar.setTextVisible(False)
+        layout.addWidget(self.progress_bar)
+
+        outer_layout.addWidget(container)
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
 
 
 class CompressDialog(QDialog):
@@ -1087,6 +1245,7 @@ class TransparentWebDropZone(QWebEngineView):
         self._current_modifier = "DEFAULT"
         self._workers: list[ConversionWorker] = []
         self._dialogs: list[QDialog] = []
+        self._is_processing = False
 
         # Load local index.html using absolute path and QUrl.fromLocalFile()
         html_path = os.path.abspath(
@@ -1202,8 +1361,11 @@ class TransparentWebDropZone(QWebEngineView):
                             if d in self._dialogs
                             else None
                         )
-                elif action_name.upper() in ConversionWorker.FORMAT_MAP:
-                    self._start_conversion(file_paths, action_name)
+                elif (
+                    action_name.strip().upper() == "ADD BG"
+                    or action_name.strip().upper() in ConversionWorker.FORMAT_MAP
+                ):
+                    self._start_conversion(file_paths, action_name.strip().upper())
 
             self.page().runJavaScript(
                 "window.currentHoveredAction", on_action_received
@@ -1213,16 +1375,104 @@ class TransparentWebDropZone(QWebEngineView):
 
     def _start_conversion(self, file_paths: list[str], target_format: str) -> None:
         """Spawn a background thread to convert dropped files."""
+        self._is_processing = True
+
+        # Provide visual loading/processing feedback in the center pill
+        action_label = (
+            "Removing BG..."
+            if target_format == "ADD BG"
+            else f"Converting {target_format}..."
+        )
+        self.page().runJavaScript(
+            f"""
+            window.isProcessing = true;
+            (function() {{
+                const cat = document.getElementById('tooltip-category');
+                const txt = document.getElementById('tooltip-text');
+                const tip = document.getElementById('tooltip');
+                if (cat) cat.textContent = 'Processing';
+                if (txt) txt.textContent = '{action_label}';
+                if (tip) tip.classList.add('visible');
+            }})();
+            """
+        )
+
+        # Trigger: Show LoadingDialog immediately when the worker begins
+        subtitle = (
+            "Removing background with AI..."
+            if target_format == "ADD BG"
+            else f"Converting to {target_format}..."
+        )
+        loading_dialog = LoadingDialog(
+            title="Processing... Please wait",
+            subtitle=subtitle,
+            parent=self,
+        )
+        loading_dialog.show()
+
         worker = ConversionWorker(file_paths, target_format, self)
         worker.file_converted.connect(
-            lambda src, dst: print(f"[QuickDrop] Converted '{src}' -> '{dst}'")
+            lambda src, dst: print(f"[QuickDrop] Processed '{src}' -> '{dst}'")
         )
+        # Close: Connect the worker's finished/failure signal to close LoadingDialog automatically
         worker.conversion_failed.connect(
-            lambda src, err: print(f"[QuickDrop ERROR] Failed to convert '{src}': {err}")
+            lambda src, err: self._on_conversion_failed(src, err, loading_dialog)
         )
-        worker.finished.connect(lambda: self._cleanup_worker(worker))
+        worker.finished.connect(
+            lambda: self._on_conversion_finished(worker, target_format, loading_dialog)
+        )
         self._workers.append(worker)
         worker.start()
+
+    def _on_conversion_finished(
+        self,
+        worker: ConversionWorker,
+        target_format: str,
+        dialog: LoadingDialog | None = None,
+    ) -> None:
+        if dialog is not None:
+            dialog.close()
+        self._cleanup_worker(worker)
+        self._is_processing = False
+        self.page().runJavaScript(
+            """
+            (function() {
+                window.isProcessing = false;
+                const cat = document.getElementById('tooltip-category');
+                const txt = document.getElementById('tooltip-text');
+                if (cat) cat.textContent = 'Completed';
+                if (txt) txt.textContent = '✓ Done';
+                setTimeout(() => {
+                    if (window.clearHover && !window.isProcessing) window.clearHover();
+                }, 1200);
+            })();
+            """
+        )
+
+    def _on_conversion_failed(
+        self,
+        src: str,
+        err: str,
+        dialog: LoadingDialog | None = None,
+    ) -> None:
+        if dialog is not None:
+            dialog.close()
+        self._is_processing = False
+        print(f"[QuickDrop ERROR] Failed to process '{src}': {err}")
+        self.page().runJavaScript(
+            """
+            (function() {
+                window.isProcessing = false;
+                const cat = document.getElementById('tooltip-category');
+                const txt = document.getElementById('tooltip-text');
+                if (cat) cat.textContent = 'Error';
+                if (txt) txt.textContent = 'Failed';
+                setTimeout(() => {
+                    if (window.clearHover && !window.isProcessing) window.clearHover();
+                }, 1500);
+            })();
+            """
+        )
 
     def _cleanup_worker(self, worker: ConversionWorker) -> None:
         if worker in self._workers:
@@ -1247,11 +1497,11 @@ class TransparentWebDropZone(QWebEngineView):
             self.move(event.globalPosition().toPoint() - self._drag_start_pos)
             event.accept()
         else:
-            # Forward live cursor hover coordinates to WebEngine
-            pos = event.position()
-            self.page().runJavaScript(
-                f"window.updateHover({pos.x()}, {pos.y()});"
-            )
+            if not getattr(self, "_is_processing", False):
+                pos = event.position()
+                self.page().runJavaScript(
+                    f"window.updateHover({pos.x()}, {pos.y()});"
+                )
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
@@ -1259,7 +1509,8 @@ class TransparentWebDropZone(QWebEngineView):
         super().mouseReleaseEvent(event)
 
     def leaveEvent(self, event) -> None:  # noqa: N802
-        self.page().runJavaScript("window.clearHover();")
+        if not getattr(self, "_is_processing", False):
+            self.page().runJavaScript("window.clearHover();")
         super().leaveEvent(event)
 
     # ── Keyboard Tracking: Dynamic Switching ───────────────────────
