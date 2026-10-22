@@ -214,26 +214,31 @@
     // Global variable accessible by Python dropEvent
     window.currentHoveredAction = null;
 
-    // 1. Two States for the Petals
-    const DEFAULT_STATE = ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'];
-    const CTRL_CMD_STATE = ['COMPRESS', 'CROP', 'ROTATE', 'FLIP', 'FILTER', 'ENCRYPT', 'DECRYPT', 'MERGE'];
+    // 1. Three UI States for the Petals
+    const defaultState = ["PDF", "JPG", "PNG", "WEBP", "HEIC", "TIFF", "AVIF", "BMP"];
+    const ctrlCmdState = ["COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK"];
+    const shiftState   = ["TERMINAL", "SCREENSHOT", "FLOAT", "COLOR", "KEEP AWAKE", "RECORD", "TIMER", "CALC"];
 
     const MENUS = {
-      DEFAULT: DEFAULT_STATE,
-      CTRL: CTRL_CMD_STATE,
-      META: CTRL_CMD_STATE,
-      CMD: CTRL_CMD_STATE
+      DEFAULT: defaultState,
+      CTRL: ctrlCmdState,
+      META: ctrlCmdState,
+      CMD: ctrlCmdState,
+      SHIFT: shiftState
     };
 
-    let isCtrlCmdActive = false;
     let currentModifier = 'DEFAULT';
     let currentHoverIndex = -1;
 
     /**
      * Updates petal text and data-format attributes across all .petal-slice elements.
      * @param {string[]} stateArray - Array of 8 action strings
+     * @param {string} [modifierName] - 'DEFAULT' | 'CTRL' | 'SHIFT'
      */
-    function applyPetalsState(stateArray) {
+    function applyPetalsState(stateArray, modifierName) {
+      if (modifierName) {
+        currentModifier = modifierName;
+      }
       const slices = document.querySelectorAll('.petal-slice');
       slices.forEach((slice, index) => {
         if (index >= stateArray.length) return;
@@ -275,24 +280,28 @@
         tooltipText.textContent = currentText;
       }
       if (tooltipCategory) {
-        tooltipCategory.textContent = isCtrlCmdActive ? 'Action' : 'Convert to';
+        if (currentModifier === 'DEFAULT') {
+          tooltipCategory.textContent = 'Convert to';
+        } else if (currentModifier === 'SHIFT') {
+          tooltipCategory.textContent = 'Utility';
+        } else {
+          tooltipCategory.textContent = 'Action';
+        }
       }
     }
 
     /**
      * Switching Logic for Python interop: updates petal states and modifiers.
-     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'META' | 'CMD'
+     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'META' | 'CMD' | 'SHIFT'
      */
     window.switchMenu = function(modifier) {
       const mod = (modifier || 'DEFAULT').toUpperCase();
-      currentModifier = mod;
-
-      if (mod === 'CTRL' || mod === 'META' || mod === 'CMD') {
-        isCtrlCmdActive = true;
-        applyPetalsState(CTRL_CMD_STATE);
+      if (mod === 'SHIFT') {
+        applyPetalsState(shiftState, 'SHIFT');
+      } else if (mod === 'CTRL' || mod === 'META' || mod === 'CMD') {
+        applyPetalsState(ctrlCmdState, 'CTRL');
       } else {
-        isCtrlCmdActive = false;
-        applyPetalsState(DEFAULT_STATE);
+        applyPetalsState(defaultState, 'DEFAULT');
       }
     };
 
@@ -384,33 +393,39 @@
       window.clearHover();
     });
 
-    // Global keyboard listeners for Control / Meta (Cmd) keys
-    window.addEventListener('keydown', (e) => {
-      if (e.key === 'Control' || e.key === 'Meta' || e.ctrlKey || e.metaKey) {
-        if (!isCtrlCmdActive) {
-          isCtrlCmdActive = true;
-          currentModifier = 'CTRL';
-          applyPetalsState(CTRL_CMD_STATE);
+    /**
+     * Evaluates modifier key state from keyboard event and updates petals accordingly.
+     * @param {KeyboardEvent} e
+     */
+    function syncKeyboardModifiers(e) {
+      if (e.shiftKey) {
+        if (currentModifier !== 'SHIFT') {
+          applyPetalsState(shiftState, 'SHIFT');
+        }
+      } else if (e.ctrlKey || e.metaKey || (e.type === 'keydown' && (e.key === 'Control' || e.key === 'Meta'))) {
+        if (currentModifier !== 'CTRL') {
+          applyPetalsState(ctrlCmdState, 'CTRL');
+        }
+      } else {
+        if (currentModifier !== 'DEFAULT') {
+          applyPetalsState(defaultState, 'DEFAULT');
         }
       }
+    }
+
+    // Global keyboard listeners for Shift, Control, and Meta (Cmd) keys
+    window.addEventListener('keydown', (e) => {
+      syncKeyboardModifiers(e);
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.key === 'Control' || e.key === 'Meta' || (!e.ctrlKey && !e.metaKey)) {
-        if (isCtrlCmdActive) {
-          isCtrlCmdActive = false;
-          currentModifier = 'DEFAULT';
-          applyPetalsState(DEFAULT_STATE);
-        }
-      }
+      syncKeyboardModifiers(e);
     });
 
     // Reset to default on window blur to avoid stuck modifier
     window.addEventListener('blur', () => {
-      if (isCtrlCmdActive) {
-        isCtrlCmdActive = false;
-        currentModifier = 'DEFAULT';
-        applyPetalsState(DEFAULT_STATE);
+      if (currentModifier !== 'DEFAULT') {
+        applyPetalsState(defaultState, 'DEFAULT');
       }
     });
   </script>
