@@ -214,16 +214,47 @@
     // Global variable accessible by Python dropEvent
     window.currentHoveredAction = null;
 
-    // 1. Menu Datasets
+    // 1. Two States for the Petals
+    const DEFAULT_STATE = ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'];
+    const CTRL_CMD_STATE = ['COMPRESS', 'CROP', 'ROTATE', 'FLIP', 'FILTER', 'ENCRYPT', 'DECRYPT', 'MERGE'];
+
     const MENUS = {
-      DEFAULT: ['PDF', 'JPG', 'PNG', 'WEBP', 'HEIC', 'TIFF', 'AVIF', 'BMP'],
-      CTRL:    ['COMPRESS', 'METADATA', 'EDIT', 'REDACT', 'CROP', 'ADD BG', 'WATER', 'RESIZE'],
-      SHIFT:   ['ENCRYPT', 'DECRYPT', 'MERGE', 'SPLIT', 'EXTRACT', 'ROTATE', 'FLIP', 'FILTER'],
-      ALT:     ['TO ZIP', 'TO TAR', 'TO ISO', 'UNZIP', 'SEND', 'PRINT', 'DELETE', 'INFO']
+      DEFAULT: DEFAULT_STATE,
+      CTRL: CTRL_CMD_STATE,
+      META: CTRL_CMD_STATE,
+      CMD: CTRL_CMD_STATE
     };
 
+    let isCtrlCmdActive = false;
     let currentModifier = 'DEFAULT';
     let currentHoverIndex = -1;
+
+    /**
+     * Updates petal text and data-format attributes across all .petal-slice elements.
+     * @param {string[]} stateArray - Array of 8 action strings
+     */
+    function applyPetalsState(stateArray) {
+      const slices = document.querySelectorAll('.petal-slice');
+      slices.forEach((slice, index) => {
+        if (index >= stateArray.length) return;
+        const action = stateArray[index];
+
+        // Update data-format attribute (used by drag-and-drop logic)
+        slice.setAttribute('data-format', action);
+        slice.dataset.format = action;
+
+        // Update <text> content
+        const label = document.getElementById(`label-${index}`) || slice.querySelector('text');
+        if (label) {
+          label.textContent = action;
+        }
+      });
+
+      // Immediately update center action pill and window.currentHoveredAction if hovered
+      if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
+        updateTooltipText(currentHoverIndex);
+      }
+    }
 
     /**
      * Updates the center pill text dynamically based on the current active petal.
@@ -244,33 +275,24 @@
         tooltipText.textContent = currentText;
       }
       if (tooltipCategory) {
-        tooltipCategory.textContent = (currentModifier === 'DEFAULT') ? 'Convert to' : 'Action';
+        tooltipCategory.textContent = isCtrlCmdActive ? 'Action' : 'Convert to';
       }
     }
 
     /**
-     * 2. JS Switching Logic: Dynamically updates the textContent of the 8 SVG text elements based on modifier array.
-     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'SHIFT' | 'ALT'
+     * Switching Logic for Python interop: updates petal states and modifiers.
+     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'META' | 'CMD'
      */
     window.switchMenu = function(modifier) {
       const mod = (modifier || 'DEFAULT').toUpperCase();
-      const menuArray = MENUS[mod] || MENUS['DEFAULT'];
       currentModifier = mod;
 
-      for (let i = 0; i < 8; i++) {
-        const textEl = document.getElementById(`label-${i}`);
-        if (textEl) {
-          textEl.textContent = menuArray[i];
-        }
-        const sliceEl = document.getElementById(`slice-${i}`);
-        if (sliceEl) {
-          sliceEl.dataset.format = menuArray[i];
-        }
-      }
-
-      // If a petal is currently hovered, immediately update the center action pill
-      if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
-        updateTooltipText(currentHoverIndex);
+      if (mod === 'CTRL' || mod === 'META' || mod === 'CMD') {
+        isCtrlCmdActive = true;
+        applyPetalsState(CTRL_CMD_STATE);
+      } else {
+        isCtrlCmdActive = false;
+        applyPetalsState(DEFAULT_STATE);
       }
     };
 
@@ -352,7 +374,7 @@
       }
     };
 
-    // Standard in-page mouse event listeners for browser testing
+    // Standard in-page mouse event listeners
     window.addEventListener('mousemove', (e) => {
       window.updateHover(e.clientX, e.clientY);
     });
@@ -362,19 +384,34 @@
       window.clearHover();
     });
 
-    // In-page keyboard modifier listeners for browser testing
+    // Global keyboard listeners for Control / Meta (Cmd) keys
     window.addEventListener('keydown', (e) => {
-      if (e.key === 'Control') window.switchMenu('CTRL');
-      else if (e.key === 'Shift') window.switchMenu('SHIFT');
-      else if (e.key === 'Alt') window.switchMenu('ALT');
+      if (e.key === 'Control' || e.key === 'Meta' || e.ctrlKey || e.metaKey) {
+        if (!isCtrlCmdActive) {
+          isCtrlCmdActive = true;
+          currentModifier = 'CTRL';
+          applyPetalsState(CTRL_CMD_STATE);
+        }
+      }
     });
 
     window.addEventListener('keyup', (e) => {
-      if (e.ctrlKey) window.switchMenu('CTRL');
-      else if (e.shiftKey) window.switchMenu('SHIFT');
-      else if (e.altKey) window.switchMenu('ALT');
-      else window.switchMenu('DEFAULT');
-      
+      if (e.key === 'Control' || e.key === 'Meta' || (!e.ctrlKey && !e.metaKey)) {
+        if (isCtrlCmdActive) {
+          isCtrlCmdActive = false;
+          currentModifier = 'DEFAULT';
+          applyPetalsState(DEFAULT_STATE);
+        }
+      }
+    });
+
+    // Reset to default on window blur to avoid stuck modifier
+    window.addEventListener('blur', () => {
+      if (isCtrlCmdActive) {
+        isCtrlCmdActive = false;
+        currentModifier = 'DEFAULT';
+        applyPetalsState(DEFAULT_STATE);
+      }
     });
   </script>
 </body>
