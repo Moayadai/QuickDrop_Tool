@@ -9,7 +9,16 @@ pillow_heif.register_heif_opener()
 import pillow_avif
 from rembg import remove
 
-from PyQt6.QtCore import QPoint, QPointF, QRectF, Qt, QThread, QUrl, pyqtSignal
+from PyQt6.QtCore import (
+    QEvent,
+    QPoint,
+    QPointF,
+    QRectF,
+    Qt,
+    QThread,
+    QUrl,
+    pyqtSignal,
+)
 from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
@@ -1486,7 +1495,281 @@ class MetadataDialog(QDialog):
             super().keyPressEvent(event)
 
 
-class TransparentWebDropZone(QWebEngineView):
+class ColorDialog(QDialog):
+    """Frameless light translucent frosted glass dialog displaying extracted 5-color palette."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+
+        # Frameless window, light frosted glass theme matching other dialogs
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(440, 260)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("colorContainer")
+        container.setStyleSheet("""
+            #colorContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        # 1. Header with centered bold Title "Color Palette" and close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)  # Symmetry for the close button
+
+        title_label = QLabel("Color Palette")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_x_btn = QPushButton("✕")
+        close_x_btn.setFixedSize(22, 22)
+        close_x_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #111111;
+            }
+        """)
+        close_x_btn.clicked.connect(self.close)
+        header_layout.addWidget(close_x_btn)
+
+        layout.addLayout(header_layout)
+
+        # Subtitle: original file name
+        filename_label = QLabel(os.path.basename(self.file_path))
+        filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        filename_label.setWordWrap(True)
+        filename_label.setStyleSheet(
+            "color: #444444; font-size: 12px; padding-bottom: 10px;"
+        )
+        layout.addWidget(filename_label)
+
+        # 2. Palette Display: Horizontal layout containing 5 color swatches
+        swatches_layout = QHBoxLayout()
+        swatches_layout.setSpacing(12)
+        swatches_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        colors = self._extract_colors()
+        for hex_code in colors:
+            swatch_item = QVBoxLayout()
+            swatch_item.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            swatch_item.setSpacing(6)
+
+            # 60x60 rounded swatch
+            swatch = QFrame()
+            swatch.setFixedSize(60, 60)
+            swatch.setStyleSheet(f"""
+                background-color: {hex_code};
+                border-radius: 12px;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+            """)
+
+            # Selectable QLabel showing HEX code
+            hex_label = QLabel(hex_code)
+            hex_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            hex_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+            hex_label.setStyleSheet("""
+                font-size: 11px;
+                font-weight: 600;
+                color: #333333;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, Consolas, monospace;
+            """)
+
+            swatch_item.addWidget(swatch)
+            swatch_item.addWidget(hex_label)
+            swatches_layout.addLayout(swatch_item)
+
+        layout.addLayout(swatches_layout)
+
+        # 3. Bottom Bar: "Close" button
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 28px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+            QPushButton:pressed {
+                background-color: rgba(0, 0, 0, 0.14);
+            }
+        """)
+        close_btn.clicked.connect(self.close)
+        bottom_layout.addWidget(close_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _extract_colors(self) -> list[str]:
+        """Extract 5 dominant colors using PIL.Image adaptive palette."""
+        if not os.path.isfile(self.file_path):
+            return ["#CCCCCC"] * 5
+
+        try:
+            with Image.open(self.file_path) as img:
+                # Resize to small thumbnail (150x150) for fast processing
+                thumb = img.convert("RGB")
+                thumb = thumb.resize((150, 150))
+
+                # Extract 5 dominant colors using adaptive palette
+                pal_img = thumb.convert("P", palette=Image.ADAPTIVE, colors=5)
+                palette = pal_img.getpalette() or []
+
+                color_counts = pal_img.getcolors()
+                hex_colors = []
+                if color_counts:
+                    color_counts.sort(key=lambda x: x[0], reverse=True)
+                    for _, idx in color_counts[:5]:
+                        r = palette[idx * 3]
+                        g = palette[idx * 3 + 1]
+                        b = palette[idx * 3 + 2]
+                        hex_colors.append(f"#{r:02X}{g:02X}{b:02X}")
+
+                # If fewer than 5 unique colors in pixel counts, check palette entries
+                idx = 0
+                while len(hex_colors) < 5 and (idx * 3 + 2) < len(palette):
+                    r = palette[idx * 3]
+                    g = palette[idx * 3 + 1]
+                    b = palette[idx * 3 + 2]
+                    c_hex = f"#{r:02X}{g:02X}{b:02X}"
+                    if c_hex not in hex_colors:
+                        hex_colors.append(c_hex)
+                    idx += 1
+
+                # If still fewer than 5, repeat last color or default
+                while len(hex_colors) < 5:
+                    hex_colors.append(hex_colors[-1] if hex_colors else "#888888")
+
+                return hex_colors[:5]
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Failed to extract colors from '{self.file_path}': {e}")
+            return ["#CCCCCC"] * 5
+
+    def _center_on_screen(self) -> None:
+        """Center the dialog on the primary display."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+
+class ZoomLockedWebEngineView(QWebEngineView):
+    """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.setZoomFactor(1.0)
+        self.loadFinished.connect(lambda ok: self.setZoomFactor(1.0))
+        self._drag_start_pos = None
+
+    def event(self, e) -> bool:  # noqa: N802
+        if e.type() == QEvent.Type.NativeGesture or e.type() == QEvent.Type.Gesture:
+            return True
+        return super().event(e)
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier or (
+            event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        ):
+            event.ignore()
+            return
+        super().wheelEvent(event)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        """Record drag start position and pass event to super() so regular web clicks still work."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
+            )
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        """Move top-level parent window on drag and pass event to super() for web interactions."""
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+
+class TransparentWebDropZone(ZoomLockedWebEngineView):
     """Frameless translucent WebEngine radial drop zone with macOS glassmorphism."""
 
     def __init__(self) -> None:
@@ -1515,6 +1798,11 @@ class TransparentWebDropZone(QWebEngineView):
         self._workers: list[ConversionWorker] = []
         self._dialogs: list[QDialog] = []
         self._is_processing = False
+
+        # Lock UI zoom strictly to 1.0
+        self.setZoomFactor(1.0)
+        self.loadFinished.connect(self._on_page_loaded)
+        self._install_event_filters()
 
         # Load local index.html using absolute path and QUrl.fromLocalFile()
         html_path = os.path.abspath(
@@ -1633,6 +1921,16 @@ class TransparentWebDropZone(QWebEngineView):
                 elif action_name.strip().upper() == "METADATA":
                     for path in file_paths:
                         dialog = MetadataDialog(path, self)
+                        dialog.show()
+                        self._dialogs.append(dialog)
+                        dialog.finished.connect(
+                            lambda _, d=dialog: self._dialogs.remove(d)
+                            if d in self._dialogs
+                            else None
+                        )
+                elif action_name.strip().upper() == "COLOR":
+                    for path in file_paths:
+                        dialog = ColorDialog(path, self)
                         dialog.show()
                         self._dialogs.append(dialog)
                         dialog.finished.connect(
@@ -1759,29 +2057,113 @@ class TransparentWebDropZone(QWebEngineView):
 
     # ── Desktop Interactivity & Mouse Hover Tracking ───────────────
 
+    def _install_event_filters(self) -> None:
+        """Install event filter on self and internal child widgets to enable window dragging and block zoom."""
+        self.installEventFilter(self)
+        if self.focusProxy():
+            self.focusProxy().installEventFilter(self)
+        for child in self.findChildren(QWidget):
+            child.installEventFilter(self)
+
+    def childEvent(self, event) -> None:  # noqa: N802
+        super().childEvent(event)
+        if event.type() == QEvent.Type.ChildAdded and event.child().isWidgetType():
+            event.child().installEventFilter(self)
+
+    def showEvent(self, event) -> None:  # noqa: N802
+        super().showEvent(event)
+        self._install_event_filters()
+
+    def _on_page_loaded(self, ok: bool) -> None:
+        """Lock zoom strictly to 1.0 and prevent web-level gesture/wheel zoom."""
+        self.setZoomFactor(1.0)
+        self.page().runJavaScript(
+            """
+            window.addEventListener('wheel', (e) => {
+                if (e.ctrlKey) {
+                    e.preventDefault();
+                }
+            }, { passive: false });
+            window.addEventListener('gesturestart', (e) => e.preventDefault());
+            window.addEventListener('gesturechange', (e) => e.preventDefault());
+            window.addEventListener('gestureend', (e) => e.preventDefault());
+            """
+        )
+
+    def event(self, e) -> bool:  # noqa: N802
+        """Intercept and block trackpad native pinch gestures."""
+        if e.type() == QEvent.Type.NativeGesture or e.type() == QEvent.Type.Gesture:
+            return True
+        return super().event(e)
+
+    def eventFilter(self, watched, event) -> bool:  # noqa: N802
+        """Intercept gestures, mouse, and wheel events across all child widgets (including WebEngine's render widget)."""
+        if event.type() == QEvent.Type.NativeGesture or event.type() == QEvent.Type.Gesture:
+            return True
+        if event.type() == QEvent.Type.Wheel:
+            # Block Ctrl + Mouse Wheel zooming to keep scale strictly fixed
+            if event.modifiers() == Qt.KeyboardModifier.ControlModifier or (
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier
+            ):
+                event.ignore()
+                return True
+        elif event.type() == QEvent.Type.MouseButtonPress:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_start_pos = (
+                    event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
+                )
+        elif event.type() == QEvent.Type.MouseMove:
+            if (
+                event.buttons() == Qt.MouseButton.LeftButton
+                and self._drag_start_pos is not None
+            ):
+                self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
+        elif event.type() == QEvent.Type.MouseButtonRelease:
+            if event.button() == Qt.MouseButton.LeftButton:
+                self._drag_start_pos = None
+        elif event.type() == QEvent.Type.KeyPress:
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if event.key() in (
+                    Qt.Key.Key_Plus,
+                    Qt.Key.Key_Minus,
+                    Qt.Key.Key_Equal,
+                    Qt.Key.Key_0,
+                ):
+                    event.ignore()
+                    return True
+        return super().eventFilter(watched, event)
+
+    def wheelEvent(self, event) -> None:  # noqa: N802
+        """Disable Ctrl + Mouse Wheel zoom to keep circular UI scale strictly fixed."""
+        if event.modifiers() == Qt.KeyboardModifier.ControlModifier or (
+            event.modifiers() & Qt.KeyboardModifier.ControlModifier
+        ):
+            event.ignore()
+            return
+        super().wheelEvent(event)
+
     def mousePressEvent(self, event) -> None:  # noqa: N802
+        """Record drag start position and pass event to super() so regular web clicks still work."""
         if event.button() == Qt.MouseButton.LeftButton:
             self._drag_start_pos = (
-                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
             )
-            event.accept()
-        else:
-            super().mousePressEvent(event)
+        super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        """Move top-level window on drag and pass event to super() so web clicks/hovers work."""
         if (
             event.buttons() == Qt.MouseButton.LeftButton
             and self._drag_start_pos is not None
         ):
-            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
-            event.accept()
+            self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
         else:
             if not getattr(self, "_is_processing", False):
                 pos = event.position()
                 self.page().runJavaScript(
                     f"window.updateHover({pos.x()}, {pos.y()});"
                 )
-            super().mouseMoveEvent(event)
+        super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         self._drag_start_pos = None
@@ -1798,6 +2180,17 @@ class TransparentWebDropZone(QWebEngineView):
         if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
             self.close()
             return
+
+        # Disable keyboard zoom shortcuts (Ctrl + / Ctrl - / Ctrl 0)
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            if event.key() in (
+                Qt.Key.Key_Plus,
+                Qt.Key.Key_Minus,
+                Qt.Key.Key_Equal,
+                Qt.Key.Key_0,
+            ):
+                event.ignore()
+                return
 
         mod_name = self._resolve_modifier(event, is_release=False)
         self._sync_modifier(mod_name)
