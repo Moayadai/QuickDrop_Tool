@@ -1,7 +1,8 @@
 import os
 import sys
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
+from PIL.ExifTags import GPSTAGS, TAGS
 import pillow_heif
 
 pillow_heif.register_heif_opener()
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QSlider,
     QSpinBox,
+    QTextEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -1217,6 +1219,273 @@ class CropDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class MetadataDialog(QDialog):
+    """Frameless light translucent frosted glass dialog to view and clean image metadata."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+
+        # Frameless window, light frosted glass theme matching CompressDialog
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(420, 460)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("metadataContainer")
+        container.setStyleSheet("""
+            #metadataContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(12)
+
+        # 1. Header with centered bold Title "Image Metadata" and close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)  # Symmetry for the close button
+
+        title_label = QLabel("Image Metadata")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_x_btn = QPushButton("✕")
+        close_x_btn.setFixedSize(22, 22)
+        close_x_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #111111;
+            }
+        """)
+        close_x_btn.clicked.connect(self.close)
+        header_layout.addWidget(close_x_btn)
+
+        layout.addLayout(header_layout)
+
+        # Subtitle: original file name
+        filename_label = QLabel(os.path.basename(self.file_path))
+        filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        filename_label.setWordWrap(True)
+        filename_label.setStyleSheet(
+            "color: #222222; font-size: 11px; margin-top: 2px; margin-bottom: 4px; padding: 0 8px;"
+        )
+        layout.addWidget(filename_label)
+
+        # 2. Content: Read-only QTextEdit (semi-transparent background and no border)
+        self.text_edit = QTextEdit()
+        self.text_edit.setReadOnly(True)
+        self.text_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: rgba(0, 0, 0, 0.03);
+                border: none;
+                border-radius: 8px;
+                padding: 10px;
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+                font-size: 12px;
+                line-height: 1.4;
+            }
+        """)
+        metadata_text, has_metadata = self._extract_metadata()
+        self.text_edit.setPlainText(metadata_text)
+        layout.addWidget(self.text_edit)
+
+        # 3. Bottom Bar: "Close" button on left, red "Clean Metadata" (#e63946) on right
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+            QPushButton:pressed {
+                background-color: rgba(0, 0, 0, 0.14);
+            }
+        """)
+        close_btn.clicked.connect(self.close)
+        bottom_layout.addWidget(close_btn)
+
+        bottom_layout.addStretch()
+
+        self.clean_btn = QPushButton("Clean Metadata")
+        self.clean_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #e63946;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #d62839;
+            }
+            QPushButton:pressed {
+                background-color: #ba182b;
+            }
+            QPushButton:disabled {
+                background-color: rgba(0, 0, 0, 0.08);
+                color: rgba(0, 0, 0, 0.28);
+            }
+        """)
+        self.clean_btn.setEnabled(has_metadata)
+        self.clean_btn.clicked.connect(self._on_clean_metadata)
+        bottom_layout.addWidget(self.clean_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _extract_metadata(self) -> tuple[str, bool]:
+        """Extract EXIF data using img.getexif() and TAGS, returning (text, has_metadata)."""
+        fallback_msg = (
+            "No EXIF metadata found. This file format may not be supported for "
+            "metadata extraction (try JPG, PNG, TIFF)."
+        )
+        if not os.path.isfile(self.file_path):
+            return fallback_msg, False
+
+        try:
+            with Image.open(self.file_path) as img:
+                lines = []
+                exif = img.getexif()
+                if exif:
+                    for tag_id, value in exif.items():
+                        tag_name = TAGS.get(tag_id, str(tag_id))
+                        if tag_id == 0x8825:
+                            try:
+                                gps_ifd = exif.get_ifd(0x8825)
+                                for gps_id, gps_val in gps_ifd.items():
+                                    gps_name = GPSTAGS.get(gps_id, str(gps_id))
+                                    lines.append(f"GPS {gps_name}: {gps_val}")
+                                continue
+                            except Exception:
+                                pass
+                        elif tag_id == 0x8769:
+                            try:
+                                sub_ifd = exif.get_ifd(0x8769)
+                                for sub_id, sub_val in sub_ifd.items():
+                                    sub_name = TAGS.get(sub_id, str(sub_id))
+                                    lines.append(f"{sub_name}: {sub_val}")
+                                continue
+                            except Exception:
+                                pass
+
+                        if isinstance(value, bytes):
+                            try:
+                                val_str = value.decode("utf-8", errors="replace").strip("\x00")
+                            except Exception:
+                                val_str = f"<{len(value)} bytes>"
+                        else:
+                            val_str = str(value)
+                        lines.append(f"{tag_name}: {val_str}")
+
+                if lines:
+                    return "\n".join(lines), True
+                return "No EXIF metadata found in this image.", False
+        except (UnidentifiedImageError, Exception):
+            return fallback_msg, False
+
+    def _on_clean_metadata(self) -> None:
+        """Strip metadata and save image as [OriginalName]_cleaned.[ext] in the same directory."""
+        try:
+            with Image.open(self.file_path) as img:
+                dir_name = os.path.dirname(os.path.abspath(self.file_path))
+                base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+                output_path = os.path.join(dir_name, f"{base_name}_cleaned{ext}")
+
+                # Strip metadata by pasting into fresh image without exif parameter
+                clean_img = Image.new(img.mode, img.size)
+                clean_img.paste(img)
+                if ext.lower() in (".jpg", ".jpeg"):
+                    clean_img.save(output_path, "JPEG", quality=95)
+                else:
+                    clean_img.save(output_path)
+
+            print(f"[QuickDrop] Cleaned metadata: '{self.file_path}' -> '{output_path}'")
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Failed to clean metadata for '{self.file_path}': {e}")
+
+        self.close()
+
+    def _center_on_screen(self) -> None:
+        """Center the dialog on the primary display."""
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+
 class TransparentWebDropZone(QWebEngineView):
     """Frameless translucent WebEngine radial drop zone with macOS glassmorphism."""
 
@@ -1354,6 +1623,16 @@ class TransparentWebDropZone(QWebEngineView):
                 elif action_name == "CROP":
                     for path in file_paths:
                         dialog = CropDialog(path, self)
+                        dialog.show()
+                        self._dialogs.append(dialog)
+                        dialog.finished.connect(
+                            lambda _, d=dialog: self._dialogs.remove(d)
+                            if d in self._dialogs
+                            else None
+                        )
+                elif action_name.strip().upper() == "METADATA":
+                    for path in file_paths:
+                        dialog = MetadataDialog(path, self)
                         dialog.show()
                         self._dialogs.append(dialog)
                         dialog.finished.connect(
