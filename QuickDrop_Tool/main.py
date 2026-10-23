@@ -1964,6 +1964,44 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                             self._execute_terminal(path)
                     else:
                         self._execute_terminal()
+                elif action_name in ["COPY PATH", "COPY_PATH"]:
+                    paths_string = "\n".join([os.path.abspath(p) for p in file_paths])
+
+                    # 1. Standard PyQt6 approach
+                    clipboard = QApplication.clipboard()
+                    clipboard.setText(paths_string)
+                    QApplication.processEvents()
+
+                    # 2. OS-Native Hardcore Fallback (Bypasses GUI clipboard issues completely)
+                    try:
+                        if sys.platform == "linux":
+                            if shutil.which("wl-copy"):
+                                subprocess.run(["wl-copy"], input=paths_string.encode(), check=True)
+                            elif shutil.which("xclip"):
+                                subprocess.run(["xclip", "-selection", "clipboard"], input=paths_string.encode(), check=True)
+                        elif sys.platform == "darwin":
+                            subprocess.run(["pbcopy"], input=paths_string.encode(), check=True)
+                        elif sys.platform == "win32":
+                            subprocess.run(["clip"], input=paths_string.encode(), check=True)
+                    except Exception as e:
+                        print(f"[QuickDrop] Native clipboard fallback error: {e}")
+
+                    print(f"[QuickDrop] Copied path(s) to system clipboard:\n{paths_string}")
+                    self.page().runJavaScript(
+                        """
+                        (function() {
+                            const cat = document.getElementById('tooltip-category');
+                            const txt = document.getElementById('tooltip-text');
+                            const tip = document.getElementById('tooltip');
+                            if (cat) cat.textContent = 'Clipboard';
+                            if (txt) txt.textContent = 'Copied!';
+                            if (tip) tip.classList.add('visible', 'active');
+                            setTimeout(() => {
+                                if (window.clearHover && !window.isProcessing) window.clearHover();
+                            }, 1200);
+                        })();
+                        """
+                    )
                 elif (
                     action_name.strip().upper() == "ADD BG"
                     or action_name.strip().upper() in ConversionWorker.FORMAT_MAP
