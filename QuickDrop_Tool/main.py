@@ -1,5 +1,8 @@
 import os
+import shutil
+import subprocess
 import sys
+import time
 
 from PIL import Image, UnidentifiedImageError
 from PIL.ExifTags import GPSTAGS, TAGS
@@ -16,6 +19,7 @@ from PyQt6.QtCore import (
     QRectF,
     Qt,
     QThread,
+    QTimer,
     QUrl,
     pyqtSignal,
 )
@@ -1733,6 +1737,8 @@ class ZoomLockedWebEngineView(QWebEngineView):
         self.setZoomFactor(1.0)
         self.loadFinished.connect(lambda ok: self.setZoomFactor(1.0))
         self._drag_start_pos = None
+        self._press_global_pos = None
+        self._is_dragging_window = False
 
     def event(self, e) -> bool:  # noqa: N802
         if e.type() == QEvent.Type.NativeGesture or e.type() == QEvent.Type.Gesture:
@@ -1753,6 +1759,8 @@ class ZoomLockedWebEngineView(QWebEngineView):
             self._drag_start_pos = (
                 event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
             )
+            self._press_global_pos = event.globalPosition().toPoint()
+            self._is_dragging_window = False
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
@@ -1761,11 +1769,17 @@ class ZoomLockedWebEngineView(QWebEngineView):
             event.buttons() == Qt.MouseButton.LeftButton
             and self._drag_start_pos is not None
         ):
-            self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
+            if not getattr(self, "_is_dragging_window", False):
+                press_pos = getattr(self, "_press_global_pos", event.globalPosition().toPoint())
+                if (event.globalPosition().toPoint() - press_pos).manhattanLength() > 5:
+                    self._is_dragging_window = True
+            if getattr(self, "_is_dragging_window", False):
+                self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
         self._drag_start_pos = None
+        self._is_dragging_window = False
         super().mouseReleaseEvent(event)
 
 
@@ -1794,14 +1808,18 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         # State tracking
         self._drag_start_pos = None
+        self._press_global_pos = None
+        self._is_dragging_window = False
+        self._last_click_time = 0.0
         self._current_modifier = "DEFAULT"
         self._workers: list[ConversionWorker] = []
         self._dialogs: list[QDialog] = []
         self._is_processing = False
 
-        # Lock UI zoom strictly to 1.0
+        # Lock UI zoom strictly to 1.0 and hook title changes for click-to-execute
         self.setZoomFactor(1.0)
         self.loadFinished.connect(self._on_page_loaded)
+        self.titleChanged.connect(self._on_title_changed)
         self._install_event_filters()
 
         # Load local index.html using absolute path and QUrl.fromLocalFile()
@@ -1938,6 +1956,14 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                             if d in self._dialogs
                             else None
                         )
+                elif action_name == "SCREENSHOT":
+                    self._execute_screenshot()
+                elif action_name == "TERMINAL":
+                    if file_paths:
+                        for path in file_paths:
+                            self._execute_terminal(path)
+                    else:
+                        self._execute_terminal()
                 elif (
                     action_name.strip().upper() == "ADD BG"
                     or action_name.strip().upper() in ConversionWorker.FORMAT_MAP
@@ -2055,6 +2081,94 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         if worker in self._workers:
             self._workers.remove(worker)
 
+    # ── Click-to-Execute Utilities (SCREENSHOT / TERMINAL) ─────────
+
+    def _on_title_changed(self, title: str) -> None:
+        """Handle IPC communication from WebEngine via document.title."""
+        if title.startswith("quickdrop:action:"):
+            parts = title.split(":")
+            if len(parts) >= 3:
+                action_name = parts[2].strip().upper()
+                self._handle_action_click(action_name)
+
+    def _handle_action_click(self, action_name: str) -> None:
+        """Execute click-triggered actions without requiring file drop."""
+        now = time.time()
+        if now - getattr(self, "_last_click_time", 0) < 0.5:
+            return
+        self._last_click_time = now
+        act = action_name.strip().upper()
+        if act == "SCREENSHOT":
+            self._execute_screenshot()
+        elif act == "TERMINAL":
+            self._execute_terminal()
+
+    def _execute_screenshot(self) -> None:
+        """Cross-platform screenshot utility triggering with automatic window hide/restore."""
+        self.window().hide()
+
+        def capture_and_restore():
+            try:
+                if sys.platform == "win32":
+                    # Windows 10/11 interactive snipping tool
+                    subprocess.Popen("start ms-screenclip:", shell=True)
+                elif sys.platform == "darwin":
+                    # macOS interactive capture
+                    subprocess.run(["screencapture", "-i", "-c"])
+                else:
+                    # Linux: Native Wayland Freedesktop Portal (Bypasses Wayland security restrictions completely)
+                    try:
+                        subprocess.run([
+                            "dbus-send", "--session", "--print-reply",
+                            "--dest=org.freedesktop.portal.Desktop",
+                            "/org/freedesktop/portal/desktop",
+                            "org.freedesktop.portal.Screenshot.Screenshot",
+                            "string:", "dict:string:variant:interactive,boolean:true"
+                        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    except Exception:
+                        # Ultimate fallback for non-Wayland or older systems
+                        if shutil.which("gnome-screenshot"):
+                            subprocess.run(["gnome-screenshot", "-a"])
+                        elif shutil.which("xfce4-screenshooter"):
+                            subprocess.run(["xfce4-screenshooter", "-r"])
+            except Exception as e:
+                print(f"[QuickDrop] Screenshot error: {e}")
+            finally:
+                self.window().show()
+
+        # Let the window fully hide (300ms) before opening the OS screenshot tool
+        QTimer.singleShot(300, capture_and_restore)
+
+    def _execute_terminal(self, dir_path: str | None = None) -> None:
+        """Universal cross-platform terminal launcher defaulting to home directory if no file dropped."""
+        if not dir_path:
+            dir_path = os.path.expanduser("~")
+        else:
+            abs_path = os.path.abspath(dir_path)
+            dir_path = abs_path if os.path.isdir(abs_path) else os.path.dirname(abs_path)
+
+        if sys.platform == "win32":
+            # Windows: Open CMD in the target directory
+            subprocess.Popen(["cmd", "/K", f'cd /d "{dir_path}"'])
+
+        elif sys.platform == "darwin":
+            # macOS: Open default Terminal app in the target directory
+            subprocess.Popen(["open", "-a", "Terminal", dir_path])
+
+        else:
+            # Linux: The nuclear option for stubborn daemons like gnome-terminal
+            bash_cmd = f'cd "{dir_path}" && exec bash'
+            if shutil.which("gnome-terminal"):
+                subprocess.Popen(['gnome-terminal', '--', 'bash', '-c', bash_cmd])
+            elif shutil.which("kgx"):
+                subprocess.Popen(['kgx', '-e', f'bash -c \'{bash_cmd}\''], shell=True)
+            elif shutil.which("konsole"):
+                subprocess.Popen(['konsole', '-e', 'bash', '-c', bash_cmd])
+            elif shutil.which("ptyxis"):
+                subprocess.Popen(['ptyxis', '--', 'bash', '-c', bash_cmd])
+            else:
+                subprocess.Popen(f'x-terminal-emulator -e "bash -c \\"{bash_cmd}\\""', shell=True)
+
     # ── Desktop Interactivity & Mouse Hover Tracking ───────────────
 
     def _install_event_filters(self) -> None:
@@ -2112,15 +2226,31 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 self._drag_start_pos = (
                     event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
                 )
+                self._press_global_pos = event.globalPosition().toPoint()
+                self._is_dragging_window = False
         elif event.type() == QEvent.Type.MouseMove:
             if (
                 event.buttons() == Qt.MouseButton.LeftButton
                 and self._drag_start_pos is not None
             ):
-                self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
+                if not getattr(self, "_is_dragging_window", False):
+                    press_pos = getattr(self, "_press_global_pos", event.globalPosition().toPoint())
+                    if (event.globalPosition().toPoint() - press_pos).manhattanLength() > 5:
+                        self._is_dragging_window = True
+                if getattr(self, "_is_dragging_window", False):
+                    self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
         elif event.type() == QEvent.Type.MouseButtonRelease:
             if event.button() == Qt.MouseButton.LeftButton:
+                was_dragging = getattr(self, "_is_dragging_window", False)
                 self._drag_start_pos = None
+                self._is_dragging_window = False
+                if not was_dragging:
+                    def on_action(action: str | None) -> None:
+                        if action:
+                            act = action.strip().upper()
+                            if act in ("SCREENSHOT", "TERMINAL"):
+                                self._handle_action_click(act)
+                    self.page().runJavaScript("window.currentHoveredAction", on_action)
         elif event.type() == QEvent.Type.KeyPress:
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 if event.key() in (
@@ -2148,6 +2278,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._drag_start_pos = (
                 event.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
             )
+            self._press_global_pos = event.globalPosition().toPoint()
+            self._is_dragging_window = False
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
@@ -2156,7 +2288,12 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             event.buttons() == Qt.MouseButton.LeftButton
             and self._drag_start_pos is not None
         ):
-            self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
+            if not getattr(self, "_is_dragging_window", False):
+                press_pos = getattr(self, "_press_global_pos", event.globalPosition().toPoint())
+                if (event.globalPosition().toPoint() - press_pos).manhattanLength() > 5:
+                    self._is_dragging_window = True
+            if getattr(self, "_is_dragging_window", False):
+                self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
         else:
             if not getattr(self, "_is_processing", False):
                 pos = event.position()
@@ -2166,8 +2303,17 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        was_dragging = getattr(self, "_is_dragging_window", False)
         self._drag_start_pos = None
+        self._is_dragging_window = False
         super().mouseReleaseEvent(event)
+        if not was_dragging and event.button() == Qt.MouseButton.LeftButton:
+            def on_action(action: str | None) -> None:
+                if action:
+                    act = action.strip().upper()
+                    if act in ("SCREENSHOT", "TERMINAL"):
+                        self._handle_action_click(act)
+            self.page().runJavaScript("window.currentHoveredAction", on_action)
 
     def leaveEvent(self, event) -> None:  # noqa: N802
         if not getattr(self, "_is_processing", False):

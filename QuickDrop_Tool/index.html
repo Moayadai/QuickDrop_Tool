@@ -22,7 +22,7 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       -webkit-font-smoothing: antialiased;
       -moz-osx-font-smoothing: grayscale;
     }
@@ -37,19 +37,37 @@
       align-items: center;
     }
 
-    /* 380x380 Radial Flower Container */
+    /* 380x380 Radial Menu Container */
     .radial-menu {
       position: relative;
       width: 380px;
       height: 380px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
     }
 
-    /* Backdrop element disabled to prevent Linux Skia compositor crashes */
-    .glass-petals-backdrop {
-      display: none;
+    /* True Glassmorphic Donut Backdrop: Frosted glass ring behind all petals */
+    .glass-donut-backdrop {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate3d(-50%, -50%, 0);
+      width: 352px;
+      height: 352px;
+      border-radius: 50%;
+      -webkit-mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
+      mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      background: rgba(255, 255, 255, 0.16);
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.08);
+      pointer-events: none;
+      z-index: 1;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
-    /* SVG Flower Petals Overlay (380x380) */
+    /* SVG Flower Petals Container (380x380) */
     .radial-svg {
       position: absolute;
       top: 0;
@@ -57,155 +75,235 @@
       width: 100%;
       height: 100%;
       display: block;
+      overflow: visible;
       pointer-events: auto;
+      z-index: 10;
     }
 
-    /* Glass Donut Track: Circular container ring behind all petals */
+    /* Glass Donut Track: Translucent circular container ring */
     .donut-track {
-      fill: rgba(255, 255, 255, 0.1);
-      stroke: rgba(255, 255, 255, 0.1);
+      fill: none;
+      stroke: rgba(255, 255, 255, 0.18);
+      stroke-width: 104px;
       pointer-events: none;
     }
 
-    /* 3. Milky Frosted Petals: Solid milky frosted white without shadows for safe Linux rendering */
-    /* Glass Edges: Subtle, crisp border/stroke of rgba(255, 255, 255, 0.6) */
-    .petal-slice {
-      fill: rgba(250, 245, 240, 0.85);
-      stroke: rgba(255, 255, 255, 0.6);
-      stroke-width: 1px;
+    /* Petal Group: Holds slice path and label text */
+    .petal-group {
+      transform-origin: 190px 190px;
+      transition: transform 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+                  filter 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      will-change: transform;
       cursor: pointer;
-      transition: fill 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                  stroke 0.18s cubic-bezier(0.16, 1, 0.3, 1);
     }
 
-    /* 4. Tangerine Hover (Vibrant): Warm, glowing Tangerine Orange */
-    .petal-slice.active {
-      fill: rgba(255, 100, 0, 0.85);
+    /* Seamless Wedge Shapes: True continuous arc/wedge slices of the donut */
+    .petal-slice {
+      fill: rgba(255, 255, 255, 0.25);
+      stroke: rgba(255, 255, 255, 0.45);
+      stroke-width: 1px;
+      stroke-linejoin: round;
+      stroke-linecap: round;
+      cursor: pointer;
+      transition: fill 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+                  stroke 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275),
+                  stroke-width 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      will-change: fill, stroke;
+    }
+
+    /* Hover Physics: Seamless wedge pop-out scale & vibrant Tangerine orange */
+    .petal-group:hover,
+    .petal-group.active {
+      transform: scale(1.08);
+      filter: drop-shadow(0 6px 20px rgba(255, 85, 0, 0.55));
+    }
+
+    .petal-group:active {
+      transform: scale(0.96) !important;
+      transition: transform 0.08s ease !important;
+    }
+
+    .petal-group:hover .petal-slice,
+    .petal-group.active .petal-slice {
+      fill: url(#tangerine-grad) #ff5500;
       stroke: rgba(255, 255, 255, 0.95);
       stroke-width: 1.5px;
     }
 
-    /* Text Contrast: Dark #222 inside unhovered petals for crisp readability */
+    /* Segment Label Inside Wedge Petals */
     .segment-label {
       font-size: 13.5px;
       font-weight: 800;
       letter-spacing: 0.5px;
-      fill: #222222;
+      fill: #1d1d1f;
       text-anchor: middle;
       dominant-baseline: central;
       pointer-events: none;
-      transition: fill 0.18s ease;
+      transition: fill 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      will-change: fill;
     }
 
-    /* When petal is hovered in glowing Tangerine Orange, text turns crisp white */
-    .segment-label.active {
+    .segment-label.small-text {
+      font-size: 10px;
+      letter-spacing: 0.2px;
+    }
+
+    .petal-group:hover .segment-label,
+    .petal-group.active .segment-label {
       fill: #ffffff;
       font-weight: 900;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.3));
     }
 
-    /* The Center Pill: Simple clean bubble for center dynamic text */
-    .center-pill-container {
+    /* True Glassmorphism Center Circle (Native macOS frosted glass hub) */
+    .center-circle {
       position: absolute;
       top: 50%;
       left: 50%;
-      transform: translate(-50%, -50%) scale(0.92);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      opacity: 0;
-      transition: opacity 0.18s cubic-bezier(0.16, 1, 0.3, 1),
-                  transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
-      z-index: 30;
-    }
-
-    .center-pill-container.visible {
-      opacity: 1;
-      transform: translate(-50%, -50%) scale(1);
-    }
-
-    .center-pill {
-      padding: 7px 18px;
-      border-radius: 15px;
-      background: rgba(255, 255, 255, 0.4);
-      border: 1px solid rgba(255, 255, 255, 0.5);
+      transform: translate3d(-50%, -50%, 0) scale(1);
+      width: 136px;
+      height: 136px;
+      border-radius: 50%;
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      background: rgba(255, 255, 255, 0.25);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08), inset 0 1.5px 2px rgba(255, 255, 255, 0.75);
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      white-space: nowrap;
-      max-width: 136px;
+      pointer-events: none;
+      z-index: 30;
+      padding: 10px;
+      text-align: center;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      will-change: transform, opacity;
+    }
+
+    .center-circle.active {
+      transform: translate3d(-50%, -50%, 0) scale(1.04);
+      border-color: rgba(255, 255, 255, 0.7);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), 0 0 24px rgba(255, 85, 0, 0.2), inset 0 1.5px 2px rgba(255, 255, 255, 0.85);
     }
 
     .pill-category {
-      font-size: 10px;
+      font-size: 10.5px;
       font-weight: 800;
       letter-spacing: 1.2px;
       text-transform: uppercase;
-      color: #ff6400;
-      margin-bottom: 2px;
+      color: #ff5500;
+      margin-bottom: 3px;
       line-height: 1;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
 
     .pill-action {
-      font-size: 16px;
+      font-size: 18px;
       font-weight: 800;
-      letter-spacing: -0.2px;
-      color: #111111;
+      letter-spacing: -0.3px;
+      color: #1d1d1f;
       text-align: center;
       line-height: 1.15;
+      max-width: 110px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      transition: all 0.35s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Menu Switching Spring Animation */
+    .menu-switching .petal-group {
+      transform: scale(0.95);
+      opacity: 0.8;
     }
   </style>
 </head>
 <body>
   <div class="app-canvas">
-    <!-- 380x380 Flower Radial Menu -->
+    <!-- 380x380 Radial Menu Container -->
     <div class="radial-menu" id="radial-menu">
-      <!-- 3. Apple Frosted Glass Backdrop (blur: 30px) clipped to the 8 petals -->
-      <div class="glass-petals-backdrop"></div>
+      <!-- Apple Frosted Glass Donut Platter (backdrop-filter: blur(25px)) -->
+      <div class="glass-donut-backdrop"></div>
 
-      <!-- 2. The Center Pill: Frosted glass bubble inside the transparent center hole -->
-      <div class="center-pill-container" id="tooltip">
-        <div class="center-pill">
-          <div class="pill-category" id="tooltip-category">Convert to</div>
-          <div class="pill-action" id="tooltip-text">PDF</div>
-        </div>
+      <!-- Center Circle: Native macOS frosted glass hub -->
+      <div class="center-circle center-pill-container center-pill" id="tooltip">
+        <div class="pill-category" id="tooltip-category">Convert to</div>
+        <div class="pill-action" id="tooltip-text">PDF</div>
       </div>
 
-      <!-- SVG Flower Petals (380x380) -->
+      <!-- SVG Continuous Donut Ring with 10 Seamless Wedge Slices -->
       <svg class="radial-svg" viewBox="0 0 380 380">
         <defs>
-          <!-- ClipPath for 8 distinct rounded petals with visible gaps -->
-          <clipPath id="petals-clip" clipPathUnits="userSpaceOnUse">
-            <path d="M 138.41 21.73 A 176 176 0 0 1 241.59 21.73 A 10 10 0 0 1 248.03 34.79 L 222.15 104.01 A 6 6 0 0 1 214.80 107.65 A 86 86 0 0 0 165.20 107.65 A 6 6 0 0 1 157.85 104.01 L 131.97 34.79 A 10 10 0 0 1 138.41 21.73 Z M 272.50 34.53 A 176 176 0 0 1 345.47 107.50 A 10 10 0 0 1 340.78 121.29 L 273.54 151.93 A 6 6 0 0 1 265.76 149.31 A 86 86 0 0 0 230.69 114.24 A 6 6 0 0 1 228.07 106.46 L 258.71 39.22 A 10 10 0 0 1 272.50 34.53 Z M 358.27 138.41 A 176 176 0 0 1 358.27 241.59 A 10 10 0 0 1 345.21 248.03 L 275.99 222.15 A 6 6 0 0 1 272.35 214.80 A 86 86 0 0 0 272.35 165.20 A 6 6 0 0 1 275.99 157.85 L 345.21 131.97 A 10 10 0 0 1 358.27 138.41 Z M 345.47 272.50 A 176 176 0 0 1 272.50 345.47 A 10 10 0 0 1 258.71 340.78 L 228.07 273.54 A 6 6 0 0 1 230.69 265.76 A 86 86 0 0 0 265.76 230.69 A 6 6 0 0 1 273.54 228.07 L 340.78 258.71 A 10 10 0 0 1 345.47 272.50 Z M 241.59 358.27 A 176 176 0 0 1 138.41 358.27 A 10 10 0 0 1 131.97 345.21 L 157.85 275.99 A 6 6 0 0 1 165.20 272.35 A 86 86 0 0 0 214.80 272.35 A 6 6 0 0 1 222.15 275.99 L 248.03 345.21 A 10 10 0 0 1 241.59 358.27 Z M 107.50 345.47 A 176 176 0 0 1 34.53 272.50 A 10 10 0 0 1 39.22 258.71 L 106.46 228.07 A 6 6 0 0 1 114.24 230.69 A 86 86 0 0 0 149.31 265.76 A 6 6 0 0 1 151.93 273.54 L 121.29 340.78 A 10 10 0 0 1 107.50 345.47 Z M 21.73 241.59 A 176 176 0 0 1 21.73 138.41 A 10 10 0 0 1 34.79 131.97 L 104.01 157.85 A 6 6 0 0 1 107.65 165.20 A 86 86 0 0 0 107.65 214.80 A 6 6 0 0 1 104.01 222.15 L 34.79 248.03 A 10 10 0 0 1 21.73 241.59 Z M 34.53 107.50 A 176 176 0 0 1 107.50 34.53 A 10 10 0 0 1 121.29 39.22 L 151.93 106.46 A 6 6 0 0 1 149.31 114.24 A 86 86 0 0 0 114.24 149.31 A 6 6 0 0 1 106.46 151.93 L 39.22 121.29 A 10 10 0 0 1 34.53 107.50 Z" />
-          </clipPath>
+          <linearGradient id="tangerine-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ff7300" />
+            <stop offset="50%" stop-color="#ff5500" />
+            <stop offset="100%" stop-color="#e64200" />
+          </linearGradient>
         </defs>
 
-        <!-- Glass Donut Track: Translucent circular ring that "holds" the petals -->
-        <circle class="donut-track" cx="190" cy="190" r="130" fill="rgba(255, 255, 255, 0.1)" stroke="rgba(255, 255, 255, 0.1)" stroke-width="108" />
+        <!-- Circular Donut Base Track -->
+        <circle class="donut-track" cx="190" cy="190" r="124" />
 
-        <!-- 1. 8 Distinct, Separated Flower Petals with Visible Gaps & Rounded Corners -->
-        <path id="slice-0" class="petal-slice" data-index="0" data-format="PDF" d="M 138.41 21.73 A 176 176 0 0 1 241.59 21.73 A 10 10 0 0 1 248.03 34.79 L 222.15 104.01 A 6 6 0 0 1 214.80 107.65 A 86 86 0 0 0 165.20 107.65 A 6 6 0 0 1 157.85 104.01 L 131.97 34.79 A 10 10 0 0 1 138.41 21.73 Z" />
-        <path id="slice-1" class="petal-slice" data-index="1" data-format="JPG" d="M 272.50 34.53 A 176 176 0 0 1 345.47 107.50 A 10 10 0 0 1 340.78 121.29 L 273.54 151.93 A 6 6 0 0 1 265.76 149.31 A 86 86 0 0 0 230.69 114.24 A 6 6 0 0 1 228.07 106.46 L 258.71 39.22 A 10 10 0 0 1 272.50 34.53 Z" />
-        <path id="slice-2" class="petal-slice" data-index="2" data-format="PNG" d="M 358.27 138.41 A 176 176 0 0 1 358.27 241.59 A 10 10 0 0 1 345.21 248.03 L 275.99 222.15 A 6 6 0 0 1 272.35 214.80 A 86 86 0 0 0 272.35 165.20 A 6 6 0 0 1 275.99 157.85 L 345.21 131.97 A 10 10 0 0 1 358.27 138.41 Z" />
-        <path id="slice-3" class="petal-slice" data-index="3" data-format="WEBP" d="M 345.47 272.50 A 176 176 0 0 1 272.50 345.47 A 10 10 0 0 1 258.71 340.78 L 228.07 273.54 A 6 6 0 0 1 230.69 265.76 A 86 86 0 0 0 265.76 230.69 A 6 6 0 0 1 273.54 228.07 L 340.78 258.71 A 10 10 0 0 1 345.47 272.50 Z" />
-        <path id="slice-4" class="petal-slice" data-index="4" data-format="HEIC" d="M 241.59 358.27 A 176 176 0 0 1 138.41 358.27 A 10 10 0 0 1 131.97 345.21 L 157.85 275.99 A 6 6 0 0 1 165.20 272.35 A 86 86 0 0 0 214.80 272.35 A 6 6 0 0 1 222.15 275.99 L 248.03 345.21 A 10 10 0 0 1 241.59 358.27 Z" />
-        <path id="slice-5" class="petal-slice" data-index="5" data-format="TIFF" d="M 107.50 345.47 A 176 176 0 0 1 34.53 272.50 A 10 10 0 0 1 39.22 258.71 L 106.46 228.07 A 6 6 0 0 1 114.24 230.69 A 86 86 0 0 0 149.31 265.76 A 6 6 0 0 1 151.93 273.54 L 121.29 340.78 A 10 10 0 0 1 107.50 345.47 Z" />
-        <path id="slice-6" class="petal-slice" data-index="6" data-format="AVIF" d="M 21.73 241.59 A 176 176 0 0 1 21.73 138.41 A 10 10 0 0 1 34.79 131.97 L 104.01 157.85 A 6 6 0 0 1 107.65 165.20 A 86 86 0 0 0 107.65 214.80 A 6 6 0 0 1 104.01 222.15 L 34.79 248.03 A 10 10 0 0 1 21.73 241.59 Z" />
-        <path id="slice-7" class="petal-slice" data-index="7" data-format="BMP" d="M 34.53 107.50 A 176 176 0 0 1 107.50 34.53 A 10 10 0 0 1 121.29 39.22 L 151.93 106.46 A 6 6 0 0 1 149.31 114.24 A 86 86 0 0 0 114.24 149.31 A 6 6 0 0 1 106.46 151.93 L 39.22 121.29 A 10 10 0 0 1 34.53 107.50 Z" />
+        <!-- 0: PDF (Top / 0°) -->
+        <g id="petal-group-0" class="petal-group">
+          <path id="slice-0" class="petal-slice petal" data-index="0" data-format="PDF" d="M 168.05 121.43 L 136.34 22.38 A 176.00 176.00 0 0 1 243.66 22.38 L 211.95 121.43 A 72.00 72.00 0 0 0 168.05 121.43 Z" />
+          <text id="label-0" class="segment-label" x="190.00" y="66.00">PDF</text>
+        </g>
 
-        <!-- Center Pill: Simple clean bubble for dynamic text -->
-        <rect id="center-pill-bg" class="center-pill-bg" x="130" y="166" width="120" height="48" rx="15" fill="rgba(255, 255, 255, 0.4)" stroke="rgba(255, 255, 255, 0.5)" stroke-width="1" pointer-events="none" />
+        <!-- 1: DOCX (Top-Right / 36°) -->
+        <g id="petal-group-1" class="petal-group">
+          <path id="slice-1" class="petal-slice petal" data-index="1" data-format="DOCX" d="M 212.55 121.62 L 245.12 22.85 A 176.00 176.00 0 0 1 331.93 85.93 L 248.06 147.43 A 72.00 72.00 0 0 0 212.55 121.62 Z" />
+          <text id="label-1" class="segment-label" x="262.89" y="89.68">DOCX</text>
+        </g>
 
-        <!-- Petal Labels: Centered in each petal (Rmid = 130px) -->
-        <text id="label-0" class="segment-label" x="190.00" y="60.00">PDF</text>
-        <text id="label-1" class="segment-label" x="281.92" y="98.08">JPG</text>
-        <text id="label-2" class="segment-label" x="320.00" y="190.00">PNG</text>
-        <text id="label-3" class="segment-label" x="281.92" y="281.92">WEBP</text>
-        <text id="label-4" class="segment-label" x="190.00" y="320.00">HEIC</text>
-        <text id="label-5" class="segment-label" x="98.08" y="281.92">TIFF</text>
-        <text id="label-6" class="segment-label" x="60.00" y="190.00">AVIF</text>
-        <text id="label-7" class="segment-label" x="98.08" y="98.08">BMP</text>
+        <!-- 2: TXT (Right-Top / 72°) -->
+        <g id="petal-group-2" class="petal-group">
+          <path id="slice-2" class="petal-slice petal" data-index="2" data-format="TXT" d="M 248.43 147.93 L 332.84 87.17 A 176.00 176.00 0 0 1 366.00 189.23 L 262.00 189.69 A 72.00 72.00 0 0 0 248.43 147.93 Z" />
+          <text id="label-2" class="segment-label" x="307.93" y="151.68">TXT</text>
+        </g>
+
+        <!-- 3: JPG (Right-Bottom / 108°) -->
+        <g id="petal-group-3" class="petal-group">
+          <path id="slice-3" class="petal-slice petal" data-index="3" data-format="JPG" d="M 262.00 190.31 L 366.00 190.77 A 176.00 176.00 0 0 1 332.84 292.83 L 248.43 232.07 A 72.00 72.00 0 0 0 262.00 190.31 Z" />
+          <text id="label-3" class="segment-label" x="307.93" y="228.32">JPG</text>
+        </g>
+
+        <!-- 4: PNG (Bottom-Right / 144°) -->
+        <g id="petal-group-4" class="petal-group">
+          <path id="slice-4" class="petal-slice petal" data-index="4" data-format="PNG" d="M 248.06 232.57 L 331.93 294.07 A 176.00 176.00 0 0 1 245.12 357.15 L 212.55 258.38 A 72.00 72.00 0 0 0 248.06 232.57 Z" />
+          <text id="label-4" class="segment-label" x="262.89" y="290.32">PNG</text>
+        </g>
+
+        <!-- 5: WEBP (Bottom / 180°) -->
+        <g id="petal-group-5" class="petal-group">
+          <path id="slice-5" class="petal-slice petal" data-index="5" data-format="WEBP" d="M 211.95 258.57 L 243.66 357.62 A 176.00 176.00 0 0 1 136.34 357.62 L 168.05 258.57 A 72.00 72.00 0 0 0 211.95 258.57 Z" />
+          <text id="label-5" class="segment-label" x="190.00" y="314.00">WEBP</text>
+        </g>
+
+        <!-- 6: HEIC (Bottom-Left / 216°) -->
+        <g id="petal-group-6" class="petal-group">
+          <path id="slice-6" class="petal-slice petal" data-index="6" data-format="HEIC" d="M 167.45 258.38 L 134.88 357.15 A 176.00 176.00 0 0 1 48.07 294.07 L 131.94 232.57 A 72.00 72.00 0 0 0 167.45 258.38 Z" />
+          <text id="label-6" class="segment-label" x="117.11" y="290.32">HEIC</text>
+        </g>
+
+        <!-- 7: AVIF (Left-Bottom / 252°) -->
+        <g id="petal-group-7" class="petal-group">
+          <path id="slice-7" class="petal-slice petal" data-index="7" data-format="AVIF" d="M 131.57 232.07 L 47.16 292.83 A 176.00 176.00 0 0 1 14.00 190.77 L 118.00 190.31 A 72.00 72.00 0 0 0 131.57 232.07 Z" />
+          <text id="label-7" class="segment-label" x="72.07" y="228.32">AVIF</text>
+        </g>
+
+        <!-- 8: TIFF (Left-Top / 288°) -->
+        <g id="petal-group-8" class="petal-group">
+          <path id="slice-8" class="petal-slice petal" data-index="8" data-format="TIFF" d="M 118.00 189.69 L 14.00 189.23 A 176.00 176.00 0 0 1 47.16 87.17 L 131.57 147.93 A 72.00 72.00 0 0 0 118.00 189.69 Z" />
+          <text id="label-8" class="segment-label" x="72.07" y="151.68">TIFF</text>
+        </g>
+
+        <!-- 9: BMP (Top-Left / 324°) -->
+        <g id="petal-group-9" class="petal-group">
+          <path id="slice-9" class="petal-slice petal" data-index="9" data-format="BMP" d="M 131.94 147.43 L 48.07 85.93 A 176.00 176.00 0 0 1 134.88 22.85 L 167.45 121.62 A 72.00 72.00 0 0 0 131.94 147.43 Z" />
+          <text id="label-9" class="segment-label" x="117.11" y="89.68">BMP</text>
+        </g>
       </svg>
     </div>
   </div>
@@ -213,11 +311,18 @@
   <script>
     // Global variable accessible by Python dropEvent
     window.currentHoveredAction = null;
+    window.isProcessing = false;
 
-    // 1. Three UI States for the Petals
-    const defaultState = ["PDF", "JPG", "PNG", "WEBP", "HEIC", "TIFF", "AVIF", "BMP"];
-    const ctrlCmdState = ["COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK"];
-    const shiftState   = ["TERMINAL", "SCREENSHOT", "FLOAT", "COLOR", "KEEP AWAKE", "RECORD", "TIMER", "CALC"];
+    // Three UI States matching Tangerine macOS app
+    const defaultState = [
+      "PDF", "DOCX", "TXT", "JPG", "PNG", "WEBP", "HEIC", "AVIF", "TIFF", "BMP"
+    ];
+    const ctrlCmdState = [
+      "COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK", "OCR", "CONVERT"
+    ];
+    const shiftState = [
+      "AIRDROP", "FLOAT", "COPY PATH", "TERMINAL", "SCREENSHOT", "COLOR", "KEEP AWAKE", "RECORD", "TIMER", "CALC"
+    ];
 
     const MENUS = {
       DEFAULT: defaultState,
@@ -231,40 +336,79 @@
     let currentHoverIndex = -1;
 
     /**
-     * Updates petal text and data-format attributes across all .petal-slice elements.
-     * @param {string[]} stateArray - Array of 8 action strings
+     * Resets the center circle text to idle state based on active modifier.
+     */
+    function resetTooltipText() {
+      if (window.isProcessing) return;
+      const tooltipText = document.getElementById('tooltip-text');
+      const tooltipCategory = document.getElementById('tooltip-category');
+      if (tooltipCategory) {
+        if (currentModifier === 'DEFAULT') {
+          tooltipCategory.textContent = 'Convert to';
+        } else if (currentModifier === 'SHIFT') {
+          tooltipCategory.textContent = 'Utility';
+        } else {
+          tooltipCategory.textContent = 'Action';
+        }
+      }
+      if (tooltipText) {
+        tooltipText.textContent = currentModifier === 'DEFAULT' ? 'PDF' : MENUS[currentModifier][0];
+      }
+    }
+
+    /**
+     * Updates petal text and data-format attributes across all slices.
+     * Triggers a subtle macOS spring bounce on modifier change.
+     * @param {string[]} stateArray - Array of 10 action strings
      * @param {string} [modifierName] - 'DEFAULT' | 'CTRL' | 'SHIFT'
      */
     function applyPetalsState(stateArray, modifierName) {
       if (modifierName) {
         currentModifier = modifierName;
       }
-      const slices = document.querySelectorAll('.petal-slice');
-      slices.forEach((slice, index) => {
-        if (index >= stateArray.length) return;
-        const action = stateArray[index];
 
-        // Update data-format attribute (used by drag-and-drop logic)
-        slice.setAttribute('data-format', action);
-        slice.dataset.format = action;
+      // Trigger 60fps spring pop animation on menu switching
+      const menu = document.getElementById('radial-menu');
+      if (menu) {
+        menu.classList.add('menu-switching');
+        setTimeout(() => {
+          menu.classList.remove('menu-switching');
+        }, 350);
+      }
 
-        // Update <text> content
-        const label = document.getElementById(`label-${index}`) || slice.querySelector('text');
+      stateArray.forEach((action, index) => {
+        const slice = document.getElementById(`slice-${index}`);
+        const label = document.getElementById(`label-${index}`);
+
+        if (slice) {
+          slice.setAttribute('data-format', action);
+          slice.dataset.format = action;
+        }
+
         if (label) {
           label.textContent = action;
+          if (action.length > 7) {
+            label.classList.add('small-text');
+          } else {
+            label.classList.remove('small-text');
+          }
         }
       });
 
-      // Immediately update center action pill and window.currentHoveredAction if hovered
-      if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
+      // Update center circle dynamically
+      if (currentHoverIndex >= 0 && currentHoverIndex < stateArray.length) {
         updateTooltipText(currentHoverIndex);
+      } else {
+        resetTooltipText();
       }
     }
 
     /**
-     * Updates the center pill text dynamically based on the current active petal.
+     * Updates the center circle text dynamically based on the current active petal.
+     * @param {number} index
      */
     function updateTooltipText(index) {
+      if (window.isProcessing) return;
       const label = document.getElementById(`label-${index}`);
       if (!label) {
         window.currentHoveredAction = null;
@@ -291,6 +435,37 @@
     }
 
     /**
+     * Activates a petal with spring physics, scale(1.08), and vibrant tangerine shift.
+     * @param {number} index
+     */
+    function setActivePetal(index) {
+      if (index === currentHoverIndex) return;
+      currentHoverIndex = index;
+
+      for (let i = 0; i < 10; i++) {
+        const group = document.getElementById(`petal-group-${i}`);
+        const slice = document.getElementById(`slice-${i}`);
+        const label = document.getElementById(`label-${i}`);
+        if (i === index) {
+          if (group) group.classList.add('active');
+          if (slice) slice.classList.add('active');
+          if (label) label.classList.add('active');
+        } else {
+          if (group) group.classList.remove('active');
+          if (slice) slice.classList.remove('active');
+          if (label) label.classList.remove('active');
+        }
+      }
+
+      updateTooltipText(index);
+
+      const tooltip = document.getElementById('tooltip');
+      if (tooltip) {
+        tooltip.classList.add('active', 'visible');
+      }
+    }
+
+    /**
      * Switching Logic for Python interop: updates petal states and modifiers.
      * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'META' | 'CMD' | 'SHIFT'
      */
@@ -306,7 +481,8 @@
     };
 
     /**
-     * Updates hover state, highlights active petal in glowing Tangerine Orange, and reveals center action pill.
+     * Updates hover state, highlights active petal with scale(1.08) & vibrant Tangerine,
+     * and springs center frosted glass circle.
      * @param {number} x - Cursor X coordinate (window space)
      * @param {number} y - Cursor Y coordinate (window space)
      */
@@ -315,15 +491,15 @@
       if (!menu) return;
 
       const rect = menu.getBoundingClientRect();
-      const cx = rect.left + rect.width / 2;
-      const cy = rect.top + rect.height / 2;
+      const cx = rect.width ? (rect.left + rect.width / 2) : (window.innerWidth / 2 || 250);
+      const cy = rect.height ? (rect.top + rect.height / 2) : (window.innerHeight / 2 || 250);
 
       const dx = x - cx;
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
 
-      // Center hole: 76px radius | Outer edge: 184px radius
-      if (dist < 76 || dist > 184) {
+      // Inner hole: 66px radius | Outer radius: 185px radius
+      if (dist < 66 || dist > 185) {
         window.clearHover();
         return;
       }
@@ -331,65 +507,92 @@
       // Calculate angle clockwise from 12 o'clock (North = 0 deg)
       const rad = Math.atan2(dy, dx);
       const deg = (rad * 180 / Math.PI + 90 + 360) % 360;
-      const index = Math.floor(((deg + 22.5) % 360) / 45);
 
-      if (index === currentHoverIndex) return;
-      currentHoverIndex = index;
+      // 10 sectors (36 deg each, centered at 0, 36, 72, 108, 144, 180, 216, 252, 288, 324 deg)
+      const index = Math.floor(((deg + 18) % 360) / 36);
 
-      // Update petal hover state (glowing Tangerine Orange)
-      for (let i = 0; i < 8; i++) {
-        const slice = document.getElementById(`slice-${i}`);
-        const label = document.getElementById(`label-${i}`);
-        if (i === index) {
-          if (slice) slice.classList.add('active');
-          if (label) label.classList.add('active');
-        } else {
-          if (slice) slice.classList.remove('active');
-          if (label) label.classList.remove('active');
-        }
-      }
-
-      // Show active action in glassy center pill
-      updateTooltipText(index);
-      const tooltip = document.getElementById('tooltip');
-      if (tooltip) {
-        tooltip.classList.add('visible');
-      }
+      setActivePetal(index);
     };
 
     /**
-     * Clears all petal highlights and hides the center action pill.
+     * Clears all petal highlights and resets center hub with spring transition.
      */
     window.clearHover = function() {
       window.currentHoveredAction = null;
-      if (currentHoverIndex === -1) {
-        const tooltip = document.getElementById('tooltip');
-        if (tooltip) tooltip.classList.remove('visible');
-        return;
-      }
-
+      if (currentHoverIndex === -1) return;
       currentHoverIndex = -1;
 
-      for (let i = 0; i < 8; i++) {
+      for (let i = 0; i < 10; i++) {
+        const group = document.getElementById(`petal-group-${i}`);
         const slice = document.getElementById(`slice-${i}`);
         const label = document.getElementById(`label-${i}`);
+        if (group) group.classList.remove('active');
         if (slice) slice.classList.remove('active');
         if (label) label.classList.remove('active');
       }
 
       const tooltip = document.getElementById('tooltip');
       if (tooltip) {
-        tooltip.classList.remove('visible');
+        tooltip.classList.remove('active');
       }
+      resetTooltipText();
     };
 
-    // Standard in-page mouse event listeners
+    /**
+     * Dispatches action execution to Python backend on click without requiring file drop.
+     * @param {string} action
+     */
+    function triggerActionIfApplicable(action) {
+      if (!action) return;
+      const act = action.trim().toUpperCase();
+      if (act === 'SCREENSHOT' || act === 'TERMINAL') {
+        document.title = 'quickdrop:action:' + act + ':' + Date.now();
+      }
+    }
+    window.triggerAction = triggerActionIfApplicable;
+
+    // Polyfill .click() on SVG elements for programmatic triggering
+    if (typeof SVGElement !== 'undefined' && !SVGElement.prototype.click) {
+      SVGElement.prototype.click = function() {
+        this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+      };
+    }
+
+    // Standard in-page mouse and petal interaction
+    for (let i = 0; i < 10; i++) {
+      const group = document.getElementById(`petal-group-${i}`);
+      const slice = document.getElementById(`slice-${i}`);
+      const handlePetalClick = (e) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        const label = document.getElementById(`label-${i}`);
+        const action = (label ? label.textContent.trim() : '') || window.currentHoveredAction;
+        triggerActionIfApplicable(action);
+      };
+
+      if (group) {
+        group.addEventListener('mouseenter', () => setActivePetal(i));
+        group.addEventListener('click', handlePetalClick);
+      }
+      if (slice && slice !== group) {
+        slice.addEventListener('mouseenter', () => setActivePetal(i));
+        slice.addEventListener('click', handlePetalClick);
+      }
+    }
+
+    const radialMenuEl = document.getElementById('radial-menu');
+    if (radialMenuEl) {
+      radialMenuEl.addEventListener('click', (e) => {
+        if (window.currentHoveredAction) {
+          triggerActionIfApplicable(window.currentHoveredAction);
+        }
+      });
+    }
+
     window.addEventListener('mousemove', (e) => {
       window.updateHover(e.clientX, e.clientY);
     });
 
     window.addEventListener('mouseleave', () => {
-      window.currentHoveredAction = null;
       window.clearHover();
     });
 
