@@ -4,7 +4,7 @@ import subprocess
 import sys
 import time
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 from PIL.ExifTags import GPSTAGS, TAGS
 import pillow_heif
 
@@ -23,7 +23,7 @@ from PyQt6.QtCore import (
     QUrl,
     pyqtSignal,
 )
-from PyQt6.QtGui import QBrush, QColor, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QBrush, QClipboard, QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
@@ -160,6 +160,157 @@ class ConversionWorker(QThread):
                 self.conversion_failed.emit(file_path, str(e))
 
         self.finished_all.emit(success_count, len(self.file_paths))
+
+
+class OCRWorker(QThread):
+    """Background worker thread for asynchronous EasyOCR text extraction."""
+
+    extracted = pyqtSignal(str)
+    failed = pyqtSignal(str)
+
+    def __init__(self, file_paths: list[str] | str, parent=None) -> None:
+        super().__init__(parent)
+        if isinstance(file_paths, str):
+            self.file_paths = [file_paths]
+        else:
+            self.file_paths = list(file_paths)
+
+    def run(self) -> None:
+        try:
+            import cv2
+            import easyocr
+            import numpy as np
+
+            reader = easyocr.Reader(["en"])
+            extracted_text = ""
+            for path in self.file_paths:
+                # Load image for processing with OpenCV
+                img_cv = cv2.imread(path)
+                if img_cv is None:
+                    try:
+                        img_cv = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+                    except Exception:
+                        img_cv = None
+
+                if img_cv is not None:
+                    # 1. Upscale for clarity
+                    img_cv = cv2.resize(img_cv, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+                    # 2. Sharpen to make symbols like '=' and quotes pop out
+                    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
+                    img_cv = cv2.filter2D(img_cv, -1, kernel)
+                    results = reader.readtext(img_cv, detail=1, decoder="beamsearch")
+                else:
+                    results = reader.readtext(path, detail=1, decoder="beamsearch")
+
+                if results:
+                    # Extract bounding box metrics
+                    items = []
+                    for item in results:
+                        box, text_chunk = item[0], item[1]
+                        xs = [pt[0] for pt in box]
+                        ys = [pt[1] for pt in box]
+                        x_min, x_max = min(xs), max(xs)
+                        y_min, y_max = min(ys), max(ys)
+                        items.append({
+                            "text": text_chunk,
+                            "x_min": x_min,
+                            "x_max": x_max,
+                            "y_min": y_min,
+                            "y_max": y_max,
+                            "y_center": (y_min + y_max) / 2.0,
+                            "h": max(1.0, y_max - y_min),
+                        })
+
+                    # Calculate document-wide metrics for spacing and indentation
+                    heights = [it["h"] for it in items]
+                    avg_h = (sum(heights) / len(heights)) if heights else 20.0
+                    char_w = max(5.0, avg_h * 0.55)
+                    global_min_x = min(it["x_min"] for it in items)
+
+                    # Sort boxes primarily by vertical center
+                    items.sort(key=lambda b: (b["y_center"], b["x_min"]))
+
+                    # Group bounding boxes into exact lines using vertical overlap and center distance
+                    lines = []
+                    for b in items:
+                        matched_line = None
+                        best_overlap = 0.0
+
+                        for line in lines:
+                            line_h = max(1.0, line["y_max"] - line["y_min"])
+                            overlap = max(0.0, min(b["y_max"], line["y_max"]) - max(b["y_min"], line["y_min"]))
+                            min_h = min(b["h"], line_h)
+                            overlap_ratio = overlap / min_h if min_h > 0 else 0.0
+                            center_inside = line["y_min"] <= b["y_center"] <= line["y_max"]
+                            center_dist = abs(b["y_center"] - line["y_center"])
+
+                            if overlap_ratio >= 0.3 or center_inside or center_dist <= 0.45 * min_h:
+                                if overlap_ratio > best_overlap:
+                                    best_overlap = overlap_ratio
+                                    matched_line = line
+
+                        if matched_line is not None:
+                            matched_line["boxes"].append(b)
+                            matched_line["y_min"] = min(matched_line["y_min"], b["y_min"])
+                            matched_line["y_max"] = max(matched_line["y_max"], b["y_max"])
+                            matched_line["y_center"] = sum(x["y_center"] for x in matched_line["boxes"]) / len(matched_line["boxes"])
+                        else:
+                            lines.append({
+                                "y_min": b["y_min"],
+                                "y_max": b["y_max"],
+                                "y_center": b["y_center"],
+                                "boxes": [b],
+                            })
+
+                    # Sort lines strictly top-to-bottom
+                    lines.sort(key=lambda l: l["y_center"])
+
+                    # Reconstruct lines: sort left-to-right, preserve indentation and token spacing
+                    formatted_lines = []
+                    for line in lines:
+                        line["boxes"].sort(key=lambda b: b["x_min"])
+
+                        first_box = line["boxes"][0]
+                        line_str = ""
+
+                        indent_px = first_box["x_min"] - global_min_x
+                        if indent_px >= char_w * 0.75:
+                            num_indent = int(round(indent_px / char_w))
+                            line_str += " " * num_indent
+
+                        prev_x_max = None
+                        for b in line["boxes"]:
+                            if prev_x_max is not None:
+                                gap = b["x_min"] - prev_x_max
+                                if gap >= char_w * 1.5:
+                                    num_spaces = int(round(gap / char_w))
+                                    line_str += (" " * num_spaces) + b["text"]
+                                elif gap >= char_w * 0.35:
+                                    line_str += " " + b["text"]
+                                else:
+                                    line_str += b["text"]
+                            else:
+                                line_str += b["text"]
+                            prev_x_max = b["x_max"]
+
+                        formatted_lines.append(line_str)
+
+                    text = "\n".join(formatted_lines)
+                else:
+                    text = ""
+                if len(self.file_paths) > 1:
+                    extracted_text += f"--- {os.path.basename(path)} ---\n{text}\n\n"
+                else:
+                    extracted_text += f"{text}\n\n"
+
+            extracted_text = extracted_text.strip()
+            if not extracted_text:
+                extracted_text = "No text found in the image."
+            self.extracted.emit(extracted_text)
+        except ImportError:
+            self.failed.emit("Missing library. Please run: pip install easyocr")
+        except Exception as e:
+            self.failed.emit(f"OCR Error: {e}")
 
 
 class LoadingDialog(QDialog):
@@ -1729,6 +1880,253 @@ class ColorDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class OCRDialog(QDialog):
+    """Frameless light translucent frosted glass dialog displaying extracted OCR text with editing and copy capabilities."""
+
+    def __init__(self, text: str, parent=None) -> None:
+        super().__init__(parent)
+        self._initial_text = text
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(460, 480)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("ocrContainer")
+        container.setStyleSheet("""
+            #ocrContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        # Header with title and close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Extracted Text (OCR)")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_x_btn = QPushButton("✕")
+        close_x_btn.setFixedSize(22, 22)
+        close_x_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #111111;
+            }
+        """)
+        close_x_btn.clicked.connect(self.close)
+        header_layout.addWidget(close_x_btn)
+        layout.addLayout(header_layout)
+
+        subtitle_label = QLabel("Review or edit the extracted text before copying:")
+        subtitle_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        subtitle_label.setStyleSheet("color: #666666; font-size: 11px; margin-bottom: 4px;")
+        layout.addWidget(subtitle_label)
+
+        # Editable QTextEdit
+        self.text_edit = QTextEdit()
+        self.text_edit.setPlainText(self._initial_text)
+        self.text_edit.setStyleSheet("""
+            QTextEdit {
+                background-color: rgba(0, 0, 0, 0.03);
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 8px;
+                padding: 10px;
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "SF Mono", Menlo, Consolas, "Courier New", monospace;
+                font-size: 12px;
+                line-height: 1.45;
+            }
+            QTextEdit:focus {
+                border: 1px solid #ff5500;
+                background-color: #ffffff;
+            }
+        """)
+        layout.addWidget(self.text_edit)
+
+        # Bottom buttons
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        close_btn = QPushButton("Close")
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+            QPushButton:pressed {
+                background-color: rgba(0, 0, 0, 0.14);
+            }
+        """)
+        close_btn.clicked.connect(self.close)
+        bottom_layout.addWidget(close_btn)
+
+        bottom_layout.addStretch()
+
+        self.copy_btn = QPushButton("Copy to Clipboard")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #e64200;
+            }
+            QPushButton:pressed {
+                background-color: #cc3b00;
+            }
+        """)
+        self.copy_btn.clicked.connect(self._copy_to_clipboard)
+        bottom_layout.addWidget(self.copy_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _copy_to_clipboard(self) -> None:
+        """Copy current text from QTextEdit using universal PyQt6 and OS-native fallback clipboard logic."""
+        text = self.text_edit.toPlainText().strip()
+        if not text:
+            return
+
+        # 1. Standard PyQt6 clipboard
+        clipboard = QApplication.clipboard()
+        clipboard.setText(text)
+        if sys.platform == "linux":
+            clipboard.setText(text, QClipboard.Mode.Selection)
+        QApplication.processEvents()
+
+        # 2. OS-Native Hardcore Fallback
+        try:
+            if sys.platform == "linux":
+                if shutil.which("wl-copy"):
+                    subprocess.run(["wl-copy"], input=text.encode(), check=True)
+                elif shutil.which("xclip"):
+                    subprocess.run(["xclip", "-selection", "clipboard"], input=text.encode(), check=True)
+            elif sys.platform == "darwin":
+                subprocess.run(["pbcopy"], input=text.encode(), check=True)
+            elif sys.platform == "win32":
+                subprocess.run(["clip"], input=text.encode(), check=True)
+        except Exception:
+            pass
+
+        # Momentary visual feedback on button
+        self.copy_btn.setText("✓ Copied!")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #2a9d8f;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+        """)
+        QTimer.singleShot(1500, self._reset_copy_btn)
+
+    def _reset_copy_btn(self) -> None:
+        self.copy_btn.setText("Copy to Clipboard")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #e64200;
+            }
+            QPushButton:pressed {
+                background-color: #cc3b00;
+            }
+        """)
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -1813,6 +2211,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._last_click_time = 0.0
         self._current_modifier = "DEFAULT"
         self._workers: list[ConversionWorker] = []
+        self._ocr_workers: list[OCRWorker] = []
         self._dialogs: list[QDialog] = []
         self._is_processing = False
 
@@ -2002,6 +2401,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                         })();
                         """
                     )
+                elif action_name == "OCR":
+                    self._start_ocr(file_paths)
                 elif (
                     action_name.strip().upper() == "ADD BG"
                     or action_name.strip().upper() in ConversionWorker.FORMAT_MAP
@@ -2118,6 +2519,103 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def _cleanup_worker(self, worker: ConversionWorker) -> None:
         if worker in self._workers:
             self._workers.remove(worker)
+
+    def _start_ocr(self, file_paths: list[str]) -> None:
+        """Asynchronously extract text using EasyOCR in a background QThread."""
+        self._is_processing = True
+
+        # Provide visual loading feedback in the center pill
+        self.page().runJavaScript(
+            """
+            window.isProcessing = true;
+            (function() {
+                const cat = document.getElementById('tooltip-category');
+                const txt = document.getElementById('tooltip-text');
+                const tip = document.getElementById('tooltip');
+                if (cat) cat.textContent = 'Processing';
+                if (txt) txt.textContent = 'Extracting OCR...';
+                if (tip) tip.classList.add('visible');
+            })();
+            """
+        )
+
+        # Show LoadingDialog immediately
+        loading_dialog = LoadingDialog(
+            title="Processing... Please wait",
+            subtitle="🔍 Extracting text with AI... Please wait",
+            parent=self,
+        )
+        loading_dialog.show()
+
+        worker = OCRWorker(file_paths, self)
+
+        def on_success(extracted_text: str) -> None:
+            loading_dialog.close()
+            self._is_processing = False
+            if worker in self._ocr_workers:
+                self._ocr_workers.remove(worker)
+
+            self.page().runJavaScript(
+                """
+                (function() {
+                    window.isProcessing = false;
+                    const cat = document.getElementById('tooltip-category');
+                    const txt = document.getElementById('tooltip-text');
+                    const tip = document.getElementById('tooltip');
+                    if (cat) cat.textContent = 'OCR';
+                    if (txt) txt.textContent = 'Extracted';
+                    if (tip) tip.classList.add('visible', 'active');
+                    setTimeout(() => {
+                        if (window.clearHover && !window.isProcessing) window.clearHover();
+                    }, 1200);
+                })();
+                """
+            )
+
+            dialog = OCRDialog(extracted_text, parent=self)
+            dialog.show()
+            self._dialogs.append(dialog)
+            dialog.finished.connect(
+                lambda _, d=dialog: self._dialogs.remove(d)
+                if d in self._dialogs
+                else None
+            )
+
+        def on_failure(err_msg: str) -> None:
+            loading_dialog.close()
+            self._is_processing = False
+            if worker in self._ocr_workers:
+                self._ocr_workers.remove(worker)
+
+            self.page().runJavaScript(
+                """
+                (function() {
+                    window.isProcessing = false;
+                    const cat = document.getElementById('tooltip-category');
+                    const txt = document.getElementById('tooltip-text');
+                    const tip = document.getElementById('tooltip');
+                    if (cat) cat.textContent = 'Error';
+                    if (txt) txt.textContent = 'Failed';
+                    setTimeout(() => {
+                        if (window.clearHover && !window.isProcessing) window.clearHover();
+                    }, 1500);
+                })();
+                """
+            )
+
+            dialog = OCRDialog(err_msg, parent=self)
+            dialog.show()
+            self._dialogs.append(dialog)
+            dialog.finished.connect(
+                lambda _, d=dialog: self._dialogs.remove(d)
+                if d in self._dialogs
+                else None
+            )
+
+        worker.extracted.connect(on_success)
+        worker.failed.connect(on_failure)
+        self._ocr_workers.append(worker)
+        worker.start()
 
     # ── Click-to-Execute Utilities (SCREENSHOT / TERMINAL) ─────────
 
