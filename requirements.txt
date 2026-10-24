@@ -57,6 +57,7 @@ PyQt6_sip==13.13.0
 pytesseract==0.3.13
 python-bidi==0.6.12
 PyYAML==6.0.3
+rapidocr-onnxruntime==1.2.3
 referencing==0.37.0
 rembg==2.0.86
 requests==2.34.2

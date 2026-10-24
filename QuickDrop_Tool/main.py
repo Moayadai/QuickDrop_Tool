@@ -4,6 +4,26 @@ import subprocess
 import sys
 import time
 
+# Force X11 compatibility on Linux to guarantee StaysOnTop and global cursor tracking
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+try:
+    from PyQt5.QtGui import QCursor
+except ImportError:
+    import PyQt6.QtGui as _gui
+    import PyQt6.QtCore as _core
+    import PyQt6.QtWidgets as _widgets
+    import types
+    _p5 = types.ModuleType("PyQt5")
+    _p5.QtGui = _gui
+    _p5.QtCore = _core
+    _p5.QtWidgets = _widgets
+    sys.modules["PyQt5"] = _p5
+    sys.modules["PyQt5.QtGui"] = _gui
+    sys.modules["PyQt5.QtCore"] = _core
+    sys.modules["PyQt5.QtWidgets"] = _widgets
+    from PyQt5.QtGui import QCursor
+
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
 from PIL.ExifTags import GPSTAGS, TAGS
 import pillow_heif
@@ -14,6 +34,7 @@ from rembg import remove
 
 from PyQt6.QtCore import (
     QEvent,
+    QObject,
     QPoint,
     QPointF,
     QRectF,
@@ -22,7 +43,10 @@ from PyQt6.QtCore import (
     QTimer,
     QUrl,
     pyqtSignal,
+    pyqtSlot,
 )
+import PyQt6.QtCore as QtCore
+from PyQt6.QtWebChannel import QWebChannel
 from PyQt6.QtGui import QBrush, QClipboard, QColor, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
@@ -40,6 +64,15 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+
+# Compatibility aliases for Qt flags in PyQt6
+for _holder in (QtCore.Qt, Qt):
+    if not hasattr(_holder, "WindowStaysOnTopHint"):
+        setattr(_holder, "WindowStaysOnTopHint", Qt.WindowType.WindowStaysOnTopHint)
+    if not hasattr(_holder, "Tool"):
+        setattr(_holder, "Tool", Qt.WindowType.Tool)
+    if not hasattr(_holder, "FramelessWindowHint"):
+        setattr(_holder, "FramelessWindowHint", Qt.WindowType.FramelessWindowHint)
 
 
 class ConversionWorker(QThread):
@@ -2281,15 +2314,66 @@ class ZoomLockedWebEngineView(QWebEngineView):
         super().mouseReleaseEvent(event)
 
 
+class QuickDropBridge(QObject):
+    """Bridge object exposed via QWebChannel for direct JavaScript-to-Python communication."""
+
+    def __init__(self, main_window: "TransparentWebDropZone") -> None:
+        super().__init__()
+        self.window = main_window
+
+    @QtCore.pyqtSlot(bool)
+    def toggle_float_on_top(self, enable: bool):
+        print(f"--> [BACKEND] Float Toggle: {enable}")
+        self.window.hide()
+        flags = self.window.windowFlags()
+        if enable:
+            flags |= QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Tool
+        else:
+            flags &= ~(QtCore.Qt.WindowStaysOnTopHint | QtCore.Qt.Tool)
+        self.window.setWindowFlags(flags)
+        self.window.show()
+        is_float_js = "true" if enable else "false"
+        self.window.page().runJavaScript(
+            f"if (window.setFloatState) window.setFloatState({is_float_js});"
+        )
+
+    @QtCore.pyqtSlot()
+    def start_drag(self):
+        self.drag_offset = self.window.pos() - QCursor.pos()
+
+    @QtCore.pyqtSlot()
+    def do_drag(self):
+        if hasattr(self, 'drag_offset'):
+            self.window.move(QCursor.pos() + self.drag_offset)
+
+    @QtCore.pyqtSlot()
+    def stop_drag(self) -> None:
+        if hasattr(self, "drag_offset"):
+            delattr(self, "drag_offset")
+
+    @QtCore.pyqtSlot()
+    def close_app(self) -> None:
+        print("DEBUG: close_app called")
+        self.window.close()
+        QApplication.quit()
+
+    @QtCore.pyqtSlot(str)
+    def trigger_action(self, action_name: str) -> None:
+        print(f"DEBUG: trigger_action called with: {action_name}")
+        self.window._handle_action_click(action_name)
+
+
 class TransparentWebDropZone(ZoomLockedWebEngineView):
     """Frameless translucent WebEngine radial drop zone with macOS glassmorphism."""
 
     def __init__(self) -> None:
         super().__init__()
 
-        # Frameless and stays on top
+        # Frameless and stays on top (using Tool flag for Wayland/GNOME compatibility)
+        self.setWindowTitle("QuickDrop")
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Tool
             | Qt.WindowType.WindowStaysOnTopHint
         )
         self.setFixedSize(500, 500)
@@ -2310,6 +2394,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._is_dragging_window = False
         self._last_click_time = 0.0
         self._current_modifier = "DEFAULT"
+        self._is_floating = True
         self._workers: list[ConversionWorker] = []
         self._ocr_workers: list[OCRWorker] = []
         self._dialogs: list[QDialog] = []
@@ -2320,6 +2405,13 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self.loadFinished.connect(self._on_page_loaded)
         self.titleChanged.connect(self._on_title_changed)
         self._install_event_filters()
+
+        # Setup QWebChannel bridge for robust JS-to-Python IPC
+        self._bridge = QuickDropBridge(self)
+        self._channel = QWebChannel(self)
+        self._channel.registerObject("backend", self._bridge)
+        self._channel.registerObject("bridge", self._bridge)
+        self.page().setWebChannel(self._channel)
 
         # Load local index.html using absolute path and QUrl.fromLocalFile()
         html_path = os.path.abspath(
@@ -2463,6 +2555,10 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                             self._execute_terminal(path)
                     else:
                         self._execute_terminal()
+                elif action_name.strip().upper() in ("CLOSE", "QUIT", "EXIT"):
+                    self.close_app()
+                elif action_name.strip().upper() in ("FLOAT", "PIN") or action_name.strip().upper().startswith("FLOAT"):
+                    self.toggle_float_on_top()
                 elif action_name in ["COPY PATH", "COPY_PATH"]:
                     paths_string = "\n".join([os.path.abspath(p) for p in file_paths])
 
@@ -2725,19 +2821,52 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             parts = title.split(":")
             if len(parts) >= 3:
                 action_name = parts[2].strip().upper()
-                self._handle_action_click(action_name)
+                target_state = None
+                if len(parts) >= 4 and parts[3] in ("0", "1"):
+                    target_state = (parts[3] == "1")
+                self._handle_action_click(action_name, target_state)
 
-    def _handle_action_click(self, action_name: str) -> None:
+    def _handle_action_click(self, action_name: str, target_state: bool | None = None) -> None:
         """Execute click-triggered actions without requiring file drop."""
         now = time.time()
-        if now - getattr(self, "_last_click_time", 0) < 0.5:
+        if now - getattr(self, "_last_click_time", 0) < 0.2:
             return
         self._last_click_time = now
         act = action_name.strip().upper()
-        if act == "SCREENSHOT":
+        if act in ("CLOSE", "QUIT", "EXIT"):
+            self.close_app()
+        elif act == "SCREENSHOT":
             self._execute_screenshot()
         elif act == "TERMINAL":
             self._execute_terminal()
+        elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
+            self.toggle_float_on_top(target_state)
+
+    def toggle_float_on_top(self, enable: bool | None = None) -> None:
+        """Safely toggle window float state forwarding to the bridge."""
+        if enable is None:
+            enable = not getattr(self, "_is_floating", True)
+        self._bridge.toggle_float_on_top(enable)
+
+    def start_drag(self, *args, **kwargs) -> None:
+        """Forward manual drag start to the bridge."""
+        self._bridge.start_drag()
+
+    def do_drag(self, *args, **kwargs) -> None:
+        """Forward manual dragging to the bridge."""
+        self._bridge.do_drag()
+
+    def stop_drag(self) -> None:
+        """Forward manual drag release from JS."""
+        self._bridge.stop_drag()
+
+    def close_app(self) -> None:
+        """Gracefully close and exit the application."""
+        self._bridge.close_app()
+
+    def trigger_action(self, action_name: str) -> None:
+        """Handle generic action dispatches from JavaScript."""
+        self._bridge.trigger_action(action_name)
 
     def _execute_screenshot(self) -> None:
         """Cross-platform screenshot utility triggering with automatic window hide/restore."""
@@ -2825,15 +2954,17 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._install_event_filters()
 
     def _on_page_loaded(self, ok: bool) -> None:
-        """Lock zoom strictly to 1.0 and prevent web-level gesture/wheel zoom."""
+        """Lock zoom strictly to 1.0, sync float state, and prevent web-level gesture/wheel zoom."""
         self.setZoomFactor(1.0)
+        is_float_js = "true" if getattr(self, "_is_floating", True) else "false"
         self.page().runJavaScript(
-            """
-            window.addEventListener('wheel', (e) => {
-                if (e.ctrlKey) {
+            f"""
+            if (window.setFloatState) window.setFloatState({is_float_js});
+            window.addEventListener('wheel', (e) => {{
+                if (e.ctrlKey) {{
                     e.preventDefault();
-                }
-            }, { passive: false });
+                }}
+            }}, {{ passive: false }});
             window.addEventListener('gesturestart', (e) => e.preventDefault());
             window.addEventListener('gesturechange', (e) => e.preventDefault());
             window.addEventListener('gestureend', (e) => e.preventDefault());
@@ -2884,7 +3015,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     def on_action(action: str | None) -> None:
                         if action:
                             act = action.strip().upper()
-                            if act in ("SCREENSHOT", "TERMINAL"):
+                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN") or act.startswith("FLOAT"):
                                 self._handle_action_click(act)
                     self.page().runJavaScript("window.currentHoveredAction", on_action)
         elif event.type() == QEvent.Type.KeyPress:
@@ -2947,7 +3078,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             def on_action(action: str | None) -> None:
                 if action:
                     act = action.strip().upper()
-                    if act in ("SCREENSHOT", "TERMINAL"):
+                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN") or act.startswith("FLOAT"):
                         self._handle_action_click(act)
             self.page().runJavaScript("window.currentHoveredAction", on_action)
 
