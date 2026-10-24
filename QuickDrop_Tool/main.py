@@ -163,7 +163,7 @@ class ConversionWorker(QThread):
 
 
 class OCRWorker(QThread):
-    """Background worker thread for asynchronous EasyOCR text extraction."""
+    """Background worker thread for asynchronous bounding-box text extraction with Max-Channel preprocessing."""
 
     extracted = pyqtSignal(str)
     failed = pyqtSignal(str)
@@ -178,13 +178,32 @@ class OCRWorker(QThread):
     def run(self) -> None:
         try:
             import cv2
-            import easyocr
             import numpy as np
 
-            reader = easyocr.Reader(["en"])
+            # Primary engine: RapidOCR (PaddleOCR v4 on ONNX Runtime)
+            # Automatic fallback: EasyOCR (with width_ths=1.0)
+            ocr_engine = None
+            try:
+                from rapidocr_onnxruntime import RapidOCR
+                ocr_engine = RapidOCR()
+            except Exception:
+                ocr_engine = None
+
+            easyocr_reader = None
+            if ocr_engine is None:
+                try:
+                    import easyocr
+                    easyocr_reader = easyocr.Reader(["en"])
+                except Exception:
+                    easyocr_reader = None
+
+            if ocr_engine is None and easyocr_reader is None:
+                self.failed.emit("Missing library. Please run: pip install rapidocr-onnxruntime easyocr")
+                return
+
             extracted_text = ""
             for path in self.file_paths:
-                # Load image for processing with OpenCV
+                # 1. Load image safely
                 img_cv = cv2.imread(path)
                 if img_cv is None:
                     try:
@@ -192,21 +211,63 @@ class OCRWorker(QThread):
                     except Exception:
                         img_cv = None
 
-                if img_cv is not None:
-                    # 1. Upscale for clarity
-                    img_cv = cv2.resize(img_cv, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-                    # 2. Sharpen to make symbols like '=' and quotes pop out
-                    kernel = np.array([[0, -1, 0], [-1, 5, -1], [0, -1, 0]])
-                    img_cv = cv2.filter2D(img_cv, -1, kernel)
-                    results = reader.readtext(img_cv, detail=1, decoder="beamsearch")
-                else:
-                    results = reader.readtext(path, detail=1, decoder="beamsearch")
+                if img_cv is None:
+                    try:
+                        from PIL import Image
+                        with Image.open(path) as pil_img:
+                            img_cv = cv2.cvtColor(np.array(pil_img.convert("RGB")), cv2.COLOR_RGB2BGR)
+                    except Exception:
+                        img_cv = None
 
-                if results:
-                    # Extract bounding box metrics
+                if img_cv is None:
+                    continue
+
+                # 2. Perfect Dark-Mode Color Extraction (Max-Channel)
+                if len(img_cv.shape) == 2:
+                    b = g = r = img_cv
+                else:
+                    b, g, r = cv2.split(img_cv)
+
+                max_ch = np.maximum(np.maximum(b, g), r)
+                min_ch = np.minimum(np.minimum(b, g), r)
+
+                if np.mean(max_ch) < 128:  # Dark mode detected
+                    fg = cv2.subtract(max_ch, min_ch // 2)
+                    fg = cv2.normalize(fg, None, 0, 255, cv2.NORM_MINMAX)
+                    gray = 255 - fg  # Invert to black text on white background
+                else:
+                    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv
+
+                # 3. Upscale 2x using cv2.INTER_CUBIC if height < 1200px
+                h, w = gray.shape[:2]
+                if h < 1200:
+                    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+                # 4. Add generous 40px padding so edge symbols like '{' are never cropped
+                gray = cv2.copyMakeBorder(gray, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
+
+                # 5. Extract bounding boxes using RapidOCR or EasyOCR
+                result = None
+                if ocr_engine is not None:
+                    try:
+                        res, _ = ocr_engine(gray)
+                        if res:
+                            result = res
+                    except Exception:
+                        result = None
+
+                if result is None and easyocr_reader is not None:
+                    try:
+                        res = easyocr_reader.readtext(gray, detail=1, width_ths=1.0)
+                        if res:
+                            result = res
+                    except Exception:
+                        result = None
+
+                if result:
                     items = []
-                    for item in results:
-                        box, text_chunk = item[0], item[1]
+                    for item in result:
+                        box, text_chunk = item[0], str(item[1])
                         xs = [pt[0] for pt in box]
                         ys = [pt[1] for pt in box]
                         x_min, x_max = min(xs), max(xs)
@@ -219,34 +280,23 @@ class OCRWorker(QThread):
                             "y_max": y_max,
                             "y_center": (y_min + y_max) / 2.0,
                             "h": max(1.0, y_max - y_min),
+                            "w": max(1.0, x_max - x_min),
                         })
 
-                    # Calculate document-wide metrics for spacing and indentation
-                    heights = [it["h"] for it in items]
-                    avg_h = (sum(heights) / len(heights)) if heights else 20.0
-                    char_w = max(5.0, avg_h * 0.55)
-                    global_min_x = min(it["x_min"] for it in items)
+                    # Calculate average box height for robust vertical clustering
+                    avg_box_h = (sum(it["h"] for it in items) / len(items)) if items else 20.0
 
-                    # Sort boxes primarily by vertical center
+                    # 1. Aggressive vertical line clustering (within 0.6 * avg_box_h)
                     items.sort(key=lambda b: (b["y_center"], b["x_min"]))
-
-                    # Group bounding boxes into exact lines using vertical overlap and center distance
                     lines = []
                     for b in items:
                         matched_line = None
-                        best_overlap = 0.0
-
+                        best_dist = float("inf")
                         for line in lines:
-                            line_h = max(1.0, line["y_max"] - line["y_min"])
-                            overlap = max(0.0, min(b["y_max"], line["y_max"]) - max(b["y_min"], line["y_min"]))
-                            min_h = min(b["h"], line_h)
-                            overlap_ratio = overlap / min_h if min_h > 0 else 0.0
-                            center_inside = line["y_min"] <= b["y_center"] <= line["y_max"]
                             center_dist = abs(b["y_center"] - line["y_center"])
-
-                            if overlap_ratio >= 0.3 or center_inside or center_dist <= 0.45 * min_h:
-                                if overlap_ratio > best_overlap:
-                                    best_overlap = overlap_ratio
+                            if center_dist <= 0.6 * avg_box_h:
+                                if center_dist < best_dist:
+                                    best_dist = center_dist
                                     matched_line = line
 
                         if matched_line is not None:
@@ -262,42 +312,90 @@ class OCRWorker(QThread):
                                 "boxes": [b],
                             })
 
-                    # Sort lines strictly top-to-bottom
-                    lines.sort(key=lambda l: l["y_center"])
+                    # Additional merge pass to ensure no split lines within vertical tolerance
+                    merged_lines = []
+                    for line in lines:
+                        merged = False
+                        for m in merged_lines:
+                            if abs(line["y_center"] - m["y_center"]) <= 0.6 * avg_box_h:
+                                m["boxes"].extend(line["boxes"])
+                                m["y_min"] = min(m["y_min"], line["y_min"])
+                                m["y_max"] = max(m["y_max"], line["y_max"])
+                                m["y_center"] = sum(x["y_center"] for x in m["boxes"]) / len(m["boxes"])
+                                merged = True
+                                break
+                        if not merged:
+                            merged_lines.append(line)
+                    lines = merged_lines
 
-                    # Reconstruct lines: sort left-to-right, preserve indentation and token spacing
-                    formatted_lines = []
+                    # Sort lines strictly top-to-bottom
+                    lines.sort(key=lambda l: l["y_min"])
+
+                    # Sort boxes within lines strictly left-to-right
                     for line in lines:
                         line["boxes"].sort(key=lambda b: b["x_min"])
 
+                    # Calculate global_min_x and average character width char_w
+                    all_boxes = [b for line in lines for b in line["boxes"]]
+                    global_min_x = min(b["x_min"] for b in all_boxes) if all_boxes else 0.0
+                    total_box_width = sum(b["w"] for b in all_boxes)
+                    total_chars = sum(len(b["text"]) for b in all_boxes)
+                    char_w = (total_box_width / total_chars) if total_chars > 0 else 10.0
+                    char_w = max(3.0, char_w)
+
+                    line_heights = [max(1.0, line["y_max"] - line["y_min"]) for line in lines]
+                    avg_line_height = (sum(line_heights) / len(line_heights)) if line_heights else 20.0
+
+                    output_parts = []
+                    prev_line = None
+                    for line in lines:
+                        if not line["boxes"]:
+                            continue
+
+                        # Exact indentation: round((line_first_box_x - global_min_x) / char_w) * " "
                         first_box = line["boxes"][0]
-                        line_str = ""
+                        line_first_box_x = first_box["x_min"]
+                        leading_px = line_first_box_x - global_min_x
+                        indent_spaces = int(round(leading_px / char_w)) if leading_px > char_w * 0.8 else 0
+                        line_str = " " * indent_spaces
 
-                        indent_px = first_box["x_min"] - global_min_x
-                        if indent_px >= char_w * 0.75:
-                            num_indent = int(round(indent_px / char_w))
-                            line_str += " " * num_indent
-
-                        prev_x_max = None
+                        # 2. Smart horizontal joining (zero space for hyphens/dots or tight gaps)
+                        prev_box_x_max = None
+                        prev_text = ""
                         for b in line["boxes"]:
-                            if prev_x_max is not None:
-                                gap = b["x_min"] - prev_x_max
-                                if gap >= char_w * 1.5:
-                                    num_spaces = int(round(gap / char_w))
-                                    line_str += (" " * num_spaces) + b["text"]
-                                elif gap >= char_w * 0.35:
-                                    line_str += " " + b["text"]
+                            box_text = b["text"]
+                            if prev_box_x_max is not None:
+                                gap = b["x_min"] - prev_box_x_max
+                                if (
+                                    prev_text.endswith("-")
+                                    or prev_text.endswith(".")
+                                    or box_text.startswith(".")
+                                    or gap < char_w * 0.4
+                                ):
+                                    line_str += box_text
                                 else:
-                                    line_str += b["text"]
+                                    line_str += " " + box_text
                             else:
-                                line_str += b["text"]
-                            prev_x_max = b["x_max"]
+                                line_str += box_text
+                            prev_box_x_max = b["x_max"]
+                            prev_text = box_text
 
-                        formatted_lines.append(line_str)
+                        line_str = line_str.rstrip()
 
-                    text = "\n".join(formatted_lines)
+                        if prev_line is not None:
+                            vert_gap = line["y_min"] - prev_line["y_max"]
+                            if vert_gap > 1.8 * avg_line_height:
+                                output_parts.append("\n\n")
+                            else:
+                                output_parts.append("\n")
+
+                        output_parts.append(line_str)
+                        prev_line = line
+
+                    text = "".join(output_parts)
                 else:
                     text = ""
+
                 if len(self.file_paths) > 1:
                     extracted_text += f"--- {os.path.basename(path)} ---\n{text}\n\n"
                 else:
@@ -307,10 +405,12 @@ class OCRWorker(QThread):
             if not extracted_text:
                 extracted_text = "No text found in the image."
             self.extracted.emit(extracted_text)
-        except ImportError:
-            self.failed.emit("Missing library. Please run: pip install easyocr")
+        except ImportError as e:
+            self.failed.emit(f"Missing library: {e}. Please run: pip install rapidocr-onnxruntime easyocr")
         except Exception as e:
             self.failed.emit(f"OCR Error: {e}")
+
+
 
 
 class LoadingDialog(QDialog):
