@@ -1,13 +1,15 @@
+import os
+import sys
+
+# Force X11 compatibility on Linux to bypass Wayland capture block and guarantee StaysOnTop & cursor tracking
+if sys.platform.startswith('linux'):
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+
 import ast
 import operator as _py_op
-import os
 import shutil
 import subprocess
-import sys
 import time
-
-# Force X11 compatibility on Linux to guarantee StaysOnTop and global cursor tracking
-os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 try:
     from PyQt5.QtGui import QCursor
@@ -4992,6 +4994,564 @@ class TimerDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class RecorderThread(QThread):
+    """Background worker thread for continuous screen recording (ffmpeg on Linux, mss+cv2 on Windows/macOS)."""
+
+    recording_started = pyqtSignal()
+    recording_finished = pyqtSignal(str)
+    recording_error = pyqtSignal(str)
+
+    def __init__(self, output_path: str, fps: int = 25, parent=None) -> None:
+        super().__init__(parent)
+        self.output_path = output_path
+        self.fps = fps
+        self._is_running = True
+        self.process = None
+        self._terminated = False
+
+    def run(self) -> None:
+        if sys.platform.startswith("linux"):
+            self._run_linux()
+        else:
+            self._run_windows_macos()
+
+    def _run_linux(self) -> None:
+        try:
+            self._recorded_path = ""
+            # Native GNOME D-Bus Screencast for Wayland on Linux
+            try:
+                from PyQt6.QtDBus import QDBusConnection, QDBusInterface
+                self._dbus_iface = QDBusInterface(
+                    "org.gnome.Shell.Screencast",
+                    "/org/gnome/Shell/Screencast",
+                    "org.gnome.Shell.Screencast",
+                    QDBusConnection.sessionBus(),
+                )
+            except Exception:
+                self._dbus_iface = None
+
+            if self._dbus_iface and self._dbus_iface.isValid():
+                reply = self._dbus_iface.call("Screencast", "quickdrop_%d.webm", {})
+                args = reply.arguments()
+                if args and args[0] and len(args) > 1:
+                    self._recorded_path = str(args[1])
+            else:
+                self.process = subprocess.Popen(
+                    [
+                        'gdbus', 'call', '--session',
+                        '--dest', 'org.gnome.Shell.Screencast',
+                        '--object-path', '/org/gnome/Shell/Screencast',
+                        '--method', 'org.gnome.Shell.Screencast.Screencast',
+                        'quickdrop_%d.webm', '{}'
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+
+            self.recording_started.emit()
+
+            while self._is_running:
+                time.sleep(0.1)
+
+        except Exception as exc:
+            self.recording_error.emit(str(exc))
+            return
+        finally:
+            if hasattr(self, "_dbus_iface") and self._dbus_iface and self._dbus_iface.isValid():
+                try:
+                    self._dbus_iface.call("StopScreencast")
+                except Exception:
+                    pass
+            try:
+                subprocess.Popen(
+                    [
+                        'gdbus', 'call', '--session',
+                        '--dest', 'org.gnome.Shell.Screencast',
+                        '--object-path', '/org/gnome/Shell/Screencast',
+                        '--method', 'org.gnome.Shell.Screencast.StopScreencast'
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+
+        time.sleep(0.5)
+        if not self._recorded_path:
+            import glob
+            files = sorted(glob.glob(os.path.expanduser("~/Videos/quickdrop*")), key=os.path.getmtime)
+            if files:
+                self._recorded_path = files[-1]
+
+        final_path = self._recorded_path if self._recorded_path and os.path.exists(self._recorded_path) else self.output_path
+        self.recording_finished.emit(final_path)
+
+    def _run_windows_macos(self) -> None:
+        try:
+            import mss
+            import cv2
+            import numpy as np
+        except ImportError as exc:
+            self.recording_error.emit(f"Missing dependency: {exc}")
+            return
+
+        writer = None
+        try:
+            sct_factory = getattr(mss, "MSS", None) or getattr(mss, "mss", None)
+            with sct_factory() as sct:
+                mon = sct.monitors[1] if len(sct.monitors) > 1 else sct.monitors[0]
+                width = int(mon["width"])
+                height = int(mon["height"])
+
+                fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+                writer = cv2.VideoWriter(self.output_path, fourcc, float(self.fps), (width, height))
+                if not writer.isOpened():
+                    self.recording_error.emit("Failed to initialize video encoder.")
+                    return
+
+                self.recording_started.emit()
+                frame_interval = 1.0 / max(1, self.fps)
+
+                while self._is_running:
+                    t_start = time.perf_counter()
+                    raw_frame = np.array(sct.grab(mon))
+                    bgr_frame = cv2.cvtColor(raw_frame, cv2.COLOR_BGRA2BGR)
+                    writer.write(bgr_frame)
+
+                    elapsed = time.perf_counter() - t_start
+                    sleep_time = frame_interval - elapsed
+                    if sleep_time > 0:
+                        time.sleep(sleep_time)
+
+        except Exception as exc:
+            self.recording_error.emit(str(exc))
+            return
+        finally:
+            if writer is not None:
+                try:
+                    writer.release()
+                except Exception:
+                    pass
+
+        self.recording_finished.emit(self.output_path)
+
+    def stop(self) -> None:
+        """Signal recording loop to stop."""
+        self._is_running = False
+        if sys.platform.startswith("linux"):
+            if hasattr(self, "_dbus_iface") and self._dbus_iface and self._dbus_iface.isValid():
+                try:
+                    self._dbus_iface.call("StopScreencast")
+                except Exception:
+                    pass
+            try:
+                subprocess.Popen(
+                    [
+                        'gdbus', 'call', '--session',
+                        '--dest', 'org.gnome.Shell.Screencast',
+                        '--object-path', '/org/gnome/Shell/Screencast',
+                        '--method', 'org.gnome.Shell.Screencast.StopScreencast'
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            except Exception:
+                pass
+
+
+class RecordDialog(QDialog):
+    """Frameless light-themed floating screen recorder dialog with threaded capture and live timer."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._drag_start_pos = None
+
+        self._is_recording = False
+        self._elapsed_seconds = 0
+        self._recorder_thread = None
+        self._current_output_path = ""
+
+        self._ui_timer = QTimer(self)
+        self._ui_timer.setInterval(1000)
+        self._ui_timer.timeout.connect(self._on_tick)
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(340, 360)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("recordContainer")
+        container.setStyleSheet("""
+            #recordContainer {
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        # Header: Centered title with close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Screen Recorder")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # Status badge pill
+        self.status_pill = QLabel("● Standby")
+        self.status_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #f3f4f6;
+                color: #6b7280;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        layout.addWidget(self.status_pill)
+
+        # Large Digital Timer Display ("00:00:00")
+        self.timer_display = QLabel("00:00:00")
+        self.timer_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.timer_display.setStyleSheet("""
+            QLabel {
+                background-color: #f5f5f7;
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 12px;
+                color: #1c1c1e;
+                font-size: 38px;
+                font-weight: bold;
+                padding: 12px 8px;
+                letter-spacing: 2px;
+            }
+        """)
+        layout.addWidget(self.timer_display)
+
+        # Status / Destination text
+        self.info_label = QLabel("Ready to record primary screen (25 FPS)")
+        self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.info_label.setWordWrap(True)
+        self.info_label.setStyleSheet("font-size: 11px; color: #666666;")
+        layout.addWidget(self.info_label)
+
+        # Open file button (initially hidden)
+        self.open_folder_btn = QPushButton("Open Recording Folder")
+        self.open_folder_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 87, 34, 0.08);
+                color: #ff5500;
+                border: 1px solid rgba(255, 87, 34, 0.3);
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 87, 34, 0.16);
+            }
+        """)
+        self.open_folder_btn.hide()
+        self.open_folder_btn.clicked.connect(self._open_recording_folder)
+        layout.addWidget(self.open_folder_btn)
+
+        # Action Buttons: Stop (Left) and Start (Right)
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self.stop_btn = QPushButton("Stop")
+        self.stop_btn.setEnabled(False)
+        self.stop_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f3f4f6;
+                color: #4b5563;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 18px;
+                font-weight: 600;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #e5e7eb;
+                color: #111827;
+            }
+            QPushButton:disabled {
+                background-color: rgba(0, 0, 0, 0.04);
+                color: rgba(0, 0, 0, 0.25);
+            }
+        """)
+        self.stop_btn.clicked.connect(self._stop_recording)
+        btn_layout.addWidget(self.stop_btn)
+
+        btn_layout.addStretch()
+
+        self.start_btn = QPushButton("Start")
+        self.start_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 22px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+            QPushButton:disabled {
+                background-color: rgba(255, 85, 0, 0.35);
+                color: rgba(255, 255, 255, 0.7);
+            }
+        """)
+        self.start_btn.clicked.connect(self._start_recording)
+        btn_layout.addWidget(self.start_btn)
+
+        layout.addLayout(btn_layout)
+        outer_layout.addWidget(container)
+
+    def _start_recording(self) -> None:
+        if self._is_recording:
+            return
+
+        videos_dir = os.path.expanduser("~/Videos")
+        if not os.path.isdir(videos_dir):
+            try:
+                os.makedirs(videos_dir, exist_ok=True)
+            except Exception:
+                videos_dir = os.path.expanduser("~")
+        if not os.path.isdir(videos_dir):
+            videos_dir = os.path.expanduser("~")
+
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = f"QuickDrop_Recording_{timestamp}.mp4"
+        self._current_output_path = os.path.join(videos_dir, filename)
+
+        self._recorder_thread = RecorderThread(self._current_output_path, fps=25, parent=self)
+        self._recorder_thread.recording_started.connect(self._on_started)
+        self._recorder_thread.recording_finished.connect(self._on_finished)
+        self._recorder_thread.recording_error.connect(self._on_error)
+
+        self._elapsed_seconds = 0
+        self._update_timer_label()
+        self.open_folder_btn.hide()
+
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setEnabled(True)
+        self.status_pill.setText("● Recording...")
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #fee2e2;
+                color: #ef4444;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        self.info_label.setText(f"Recording to: {filename}")
+
+        self._is_recording = True
+        self._recorder_thread.start()
+        self._ui_timer.start()
+        self.showMinimized()
+
+    def _stop_recording(self) -> None:
+        if not self._is_recording:
+            return
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        self.stop_btn.setEnabled(False)
+        self.status_pill.setText("● Finalizing video...")
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #fef3c7;
+                color: #d97706;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        self._ui_timer.stop()
+        if self._recorder_thread and self._recorder_thread.isRunning():
+            self._recorder_thread.stop()
+
+    def _on_started(self) -> None:
+        pass
+
+    def _on_finished(self, saved_path: str) -> None:
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        self._is_recording = False
+        self._current_output_path = saved_path
+        self.start_btn.setEnabled(True)
+        self.start_btn.setText("Start New")
+        self.stop_btn.setEnabled(False)
+
+        filename = os.path.basename(saved_path)
+        self.status_pill.setText("✓ Saved")
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #dcfce7;
+                color: #16a34a;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        self.info_label.setText(f"Saved! {filename}")
+        self.open_folder_btn.show()
+
+    def _on_error(self, err_msg: str) -> None:
+        self.showNormal()
+        self.activateWindow()
+        self.raise_()
+        self._is_recording = False
+        self._ui_timer.stop()
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.status_pill.setText("✕ Error")
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #fee2e2;
+                color: #dc2626;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        self.info_label.setText(f"Error: {err_msg}")
+
+    def _on_tick(self) -> None:
+        self._elapsed_seconds += 1
+        self._update_timer_label()
+
+    def _update_timer_label(self) -> None:
+        hrs = self._elapsed_seconds // 3600
+        mins = (self._elapsed_seconds % 3600) // 60
+        secs = self._elapsed_seconds % 60
+        self.timer_display.setText(f"{hrs:02d}:{mins:02d}:{secs:02d}")
+
+    def _open_recording_folder(self) -> None:
+        if not self._current_output_path:
+            return
+        folder = os.path.dirname(os.path.abspath(self._current_output_path))
+        if sys.platform == "win32":
+            os.startfile(folder)
+        elif sys.platform == "darwin":
+            subprocess.Popen(["open", folder])
+        else:
+            subprocess.Popen(["xdg-open", folder])
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        elif event.key() == Qt.Key.Key_Space:
+            if self._is_recording:
+                self._stop_recording()
+            else:
+                self._start_recording()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self._is_recording and self._recorder_thread and self._recorder_thread.isRunning():
+            self._recorder_thread.stop()
+            self._recorder_thread.wait(4000)
+        super().closeEvent(event)
+
+    def reject(self) -> None:
+        if self._is_recording and self._recorder_thread and self._recorder_thread.isRunning():
+            self._recorder_thread.stop()
+            self._recorder_thread.wait(4000)
+        super().reject()
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -5394,6 +5954,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_calc()
         elif act_upper == "TIMER":
             self._open_timer()
+        elif act_upper == "RECORD":
+            self._open_record()
         elif (
             act_upper == "ADD BG"
             or act_upper in ConversionWorker.FORMAT_MAP
@@ -5422,6 +5984,9 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             return
         if act_upper == "TIMER":
             self._open_timer()
+            return
+        if act_upper == "RECORD":
+            self._open_record()
             return
 
         file_filter = (
@@ -5789,6 +6354,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_calc()
         elif act == "TIMER":
             self._open_timer()
+        elif act == "RECORD":
+            self._open_record()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
         elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
@@ -5902,6 +6469,17 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def _open_timer(self) -> None:
         """Open the standalone countdown timer dialog."""
         dialog = TimerDialog(self)
+        dialog.show()
+        self._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self._dialogs.remove(d)
+            if d in self._dialogs
+            else None
+        )
+
+    def _open_record(self) -> None:
+        """Open the standalone screen recorder dialog."""
+        dialog = RecordDialog(self)
         dialog.show()
         self._dialogs.append(dialog)
         dialog.finished.connect(
@@ -6097,6 +6675,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
 
 def main() -> None:
+    if sys.platform.startswith('linux'):
+        os.environ["QT_QPA_PLATFORM"] = "xcb"
     app = QApplication(sys.argv)
     drop_zone = TransparentWebDropZone()
     drop_zone.show()

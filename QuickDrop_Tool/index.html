@@ -912,7 +912,7 @@
         return;
       }
 
-      if (act === 'SCREENSHOT') {
+      if (act === 'SCREENSHOT' || act === 'CALC' || act === 'TIMER' || act === 'RECORD' || act === 'TERMINAL') {
         const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
         if (b && typeof b.trigger_action === 'function') {
           b.trigger_action(act);
