@@ -52,6 +52,7 @@ from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
     QDialog,
+    QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -208,227 +209,226 @@ class OCRWorker(QThread):
         else:
             self.file_paths = list(file_paths)
 
+    @staticmethod
+    def init_engines():
+        """Initialize RapidOCR or EasyOCR engine safely."""
+        ocr_engine = None
+        try:
+            from rapidocr_onnxruntime import RapidOCR
+            ocr_engine = RapidOCR()
+        except Exception:
+            ocr_engine = None
+
+        easyocr_reader = None
+        if ocr_engine is None:
+            try:
+                import easyocr
+                easyocr_reader = easyocr.Reader(["en"])
+            except Exception:
+                easyocr_reader = None
+
+        return ocr_engine, easyocr_reader
+
+    @staticmethod
+    def extract_from_image(path: str, ocr_engine=None, easyocr_reader=None) -> str:
+        """Run Max-Channel dark-mode preprocessing, line clustering, and text extraction on an image."""
+        import cv2
+        import numpy as np
+
+        # 1. Load image safely
+        img_cv = cv2.imread(path)
+        if img_cv is None:
+            try:
+                img_cv = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
+            except Exception:
+                img_cv = None
+
+        if img_cv is None:
+            try:
+                from PIL import Image
+                with Image.open(path) as pil_img:
+                    img_cv = cv2.cvtColor(np.array(pil_img.convert("RGB")), cv2.COLOR_RGB2BGR)
+            except Exception:
+                img_cv = None
+
+        if img_cv is None:
+            return ""
+
+        # 2. Perfect Dark-Mode Color Extraction (Max-Channel)
+        if len(img_cv.shape) == 2:
+            b = g = r = img_cv
+        else:
+            b, g, r = cv2.split(img_cv)
+
+        max_ch = np.maximum(np.maximum(b, g), r)
+        min_ch = np.minimum(np.minimum(b, g), r)
+
+        if np.mean(max_ch) < 128:  # Dark mode detected
+            fg = cv2.subtract(max_ch, min_ch // 2)
+            fg = cv2.normalize(fg, None, 0, 255, cv2.NORM_MINMAX)
+            gray = 255 - fg  # Invert to black text on white background
+        else:
+            gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv
+
+        # 3. Upscale 2x using cv2.INTER_CUBIC if height < 1200px
+        h, w = gray.shape[:2]
+        if h < 1200:
+            gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+        # 4. Add generous 40px padding so edge symbols like '{' are never cropped
+        gray = cv2.copyMakeBorder(gray, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
+
+        # 5. Extract bounding boxes using RapidOCR or EasyOCR
+        result = None
+        if ocr_engine is not None:
+            try:
+                res, _ = ocr_engine(gray)
+                if res:
+                    result = res
+            except Exception:
+                result = None
+
+        if result is None and easyocr_reader is not None:
+            try:
+                res = easyocr_reader.readtext(gray, detail=1, width_ths=1.0)
+                if res:
+                    result = res
+            except Exception:
+                result = None
+
+        if not result:
+            return ""
+
+        items = []
+        for item in result:
+            box, text_chunk = item[0], str(item[1])
+            xs = [pt[0] for pt in box]
+            ys = [pt[1] for pt in box]
+            x_min, x_max = min(xs), max(xs)
+            y_min, y_max = min(ys), max(ys)
+            items.append({
+                "text": text_chunk,
+                "x_min": x_min,
+                "x_max": x_max,
+                "y_min": y_min,
+                "y_max": y_max,
+                "y_center": (y_min + y_max) / 2.0,
+                "h": max(1.0, y_max - y_min),
+                "w": max(1.0, x_max - x_min),
+            })
+
+        avg_box_h = (sum(it["h"] for it in items) / len(items)) if items else 20.0
+
+        items.sort(key=lambda b: (b["y_center"], b["x_min"]))
+        lines = []
+        for b in items:
+            matched_line = None
+            best_dist = float("inf")
+            for line in lines:
+                center_dist = abs(b["y_center"] - line["y_center"])
+                if center_dist <= 0.6 * avg_box_h:
+                    if center_dist < best_dist:
+                        best_dist = center_dist
+                        matched_line = line
+
+            if matched_line is not None:
+                matched_line["boxes"].append(b)
+                matched_line["y_min"] = min(matched_line["y_min"], b["y_min"])
+                matched_line["y_max"] = max(matched_line["y_max"], b["y_max"])
+                matched_line["y_center"] = sum(x["y_center"] for x in matched_line["boxes"]) / len(matched_line["boxes"])
+            else:
+                lines.append({
+                    "y_min": b["y_min"],
+                    "y_max": b["y_max"],
+                    "y_center": b["y_center"],
+                    "boxes": [b],
+                })
+
+        merged_lines = []
+        for line in lines:
+            merged = False
+            for m in merged_lines:
+                if abs(line["y_center"] - m["y_center"]) <= 0.6 * avg_box_h:
+                    m["boxes"].extend(line["boxes"])
+                    m["y_min"] = min(m["y_min"], line["y_min"])
+                    m["y_max"] = max(m["y_max"], line["y_max"])
+                    m["y_center"] = sum(x["y_center"] for x in m["boxes"]) / len(m["boxes"])
+                    merged = True
+                    break
+            if not merged:
+                merged_lines.append(line)
+        lines = merged_lines
+
+        lines.sort(key=lambda l: l["y_min"])
+        for line in lines:
+            line["boxes"].sort(key=lambda b: b["x_min"])
+
+        all_boxes = [b for line in lines for b in line["boxes"]]
+        global_min_x = min(b["x_min"] for b in all_boxes) if all_boxes else 0.0
+        total_box_width = sum(b["w"] for b in all_boxes)
+        total_chars = sum(len(b["text"]) for b in all_boxes)
+        char_w = (total_box_width / total_chars) if total_chars > 0 else 10.0
+        char_w = max(3.0, char_w)
+
+        line_heights = [max(1.0, line["y_max"] - line["y_min"]) for line in lines]
+        avg_line_height = (sum(line_heights) / len(line_heights)) if line_heights else 20.0
+
+        output_parts = []
+        prev_line = None
+        for line in lines:
+            if not line["boxes"]:
+                continue
+
+            first_box = line["boxes"][0]
+            line_first_box_x = first_box["x_min"]
+            leading_px = line_first_box_x - global_min_x
+            indent_spaces = int(round(leading_px / char_w)) if leading_px > char_w * 0.8 else 0
+            line_str = " " * indent_spaces
+
+            prev_box_x_max = None
+            prev_text = ""
+            for b in line["boxes"]:
+                box_text = b["text"]
+                if prev_box_x_max is not None:
+                    gap = b["x_min"] - prev_box_x_max
+                    if (
+                        prev_text.endswith("-")
+                        or prev_text.endswith(".")
+                        or box_text.startswith(".")
+                        or gap < char_w * 0.4
+                    ):
+                        line_str += box_text
+                    else:
+                        line_str += " " + box_text
+                else:
+                    line_str += box_text
+                prev_box_x_max = b["x_max"]
+                prev_text = box_text
+
+            line_str = line_str.rstrip()
+
+            if prev_line is not None:
+                vert_gap = line["y_min"] - prev_line["y_max"]
+                if vert_gap > 1.8 * avg_line_height:
+                    output_parts.append("\n\n")
+                else:
+                    output_parts.append("\n")
+
+            output_parts.append(line_str)
+            prev_line = line
+
+        return "".join(output_parts)
+
     def run(self) -> None:
         try:
-            import cv2
-            import numpy as np
-
-            # Primary engine: RapidOCR (PaddleOCR v4 on ONNX Runtime)
-            # Automatic fallback: EasyOCR (with width_ths=1.0)
-            ocr_engine = None
-            try:
-                from rapidocr_onnxruntime import RapidOCR
-                ocr_engine = RapidOCR()
-            except Exception:
-                ocr_engine = None
-
-            easyocr_reader = None
-            if ocr_engine is None:
-                try:
-                    import easyocr
-                    easyocr_reader = easyocr.Reader(["en"])
-                except Exception:
-                    easyocr_reader = None
-
+            ocr_engine, easyocr_reader = OCRWorker.init_engines()
             if ocr_engine is None and easyocr_reader is None:
                 self.failed.emit("Missing library. Please run: pip install rapidocr-onnxruntime easyocr")
                 return
 
             extracted_text = ""
             for path in self.file_paths:
-                # 1. Load image safely
-                img_cv = cv2.imread(path)
-                if img_cv is None:
-                    try:
-                        img_cv = cv2.imdecode(np.fromfile(path, dtype=np.uint8), cv2.IMREAD_COLOR)
-                    except Exception:
-                        img_cv = None
-
-                if img_cv is None:
-                    try:
-                        from PIL import Image
-                        with Image.open(path) as pil_img:
-                            img_cv = cv2.cvtColor(np.array(pil_img.convert("RGB")), cv2.COLOR_RGB2BGR)
-                    except Exception:
-                        img_cv = None
-
-                if img_cv is None:
-                    continue
-
-                # 2. Perfect Dark-Mode Color Extraction (Max-Channel)
-                if len(img_cv.shape) == 2:
-                    b = g = r = img_cv
-                else:
-                    b, g, r = cv2.split(img_cv)
-
-                max_ch = np.maximum(np.maximum(b, g), r)
-                min_ch = np.minimum(np.minimum(b, g), r)
-
-                if np.mean(max_ch) < 128:  # Dark mode detected
-                    fg = cv2.subtract(max_ch, min_ch // 2)
-                    fg = cv2.normalize(fg, None, 0, 255, cv2.NORM_MINMAX)
-                    gray = 255 - fg  # Invert to black text on white background
-                else:
-                    gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY) if len(img_cv.shape) == 3 else img_cv
-
-                # 3. Upscale 2x using cv2.INTER_CUBIC if height < 1200px
-                h, w = gray.shape[:2]
-                if h < 1200:
-                    gray = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-
-                # 4. Add generous 40px padding so edge symbols like '{' are never cropped
-                gray = cv2.copyMakeBorder(gray, 40, 40, 40, 40, cv2.BORDER_CONSTANT, value=255)
-
-                # 5. Extract bounding boxes using RapidOCR or EasyOCR
-                result = None
-                if ocr_engine is not None:
-                    try:
-                        res, _ = ocr_engine(gray)
-                        if res:
-                            result = res
-                    except Exception:
-                        result = None
-
-                if result is None and easyocr_reader is not None:
-                    try:
-                        res = easyocr_reader.readtext(gray, detail=1, width_ths=1.0)
-                        if res:
-                            result = res
-                    except Exception:
-                        result = None
-
-                if result:
-                    items = []
-                    for item in result:
-                        box, text_chunk = item[0], str(item[1])
-                        xs = [pt[0] for pt in box]
-                        ys = [pt[1] for pt in box]
-                        x_min, x_max = min(xs), max(xs)
-                        y_min, y_max = min(ys), max(ys)
-                        items.append({
-                            "text": text_chunk,
-                            "x_min": x_min,
-                            "x_max": x_max,
-                            "y_min": y_min,
-                            "y_max": y_max,
-                            "y_center": (y_min + y_max) / 2.0,
-                            "h": max(1.0, y_max - y_min),
-                            "w": max(1.0, x_max - x_min),
-                        })
-
-                    # Calculate average box height for robust vertical clustering
-                    avg_box_h = (sum(it["h"] for it in items) / len(items)) if items else 20.0
-
-                    # 1. Aggressive vertical line clustering (within 0.6 * avg_box_h)
-                    items.sort(key=lambda b: (b["y_center"], b["x_min"]))
-                    lines = []
-                    for b in items:
-                        matched_line = None
-                        best_dist = float("inf")
-                        for line in lines:
-                            center_dist = abs(b["y_center"] - line["y_center"])
-                            if center_dist <= 0.6 * avg_box_h:
-                                if center_dist < best_dist:
-                                    best_dist = center_dist
-                                    matched_line = line
-
-                        if matched_line is not None:
-                            matched_line["boxes"].append(b)
-                            matched_line["y_min"] = min(matched_line["y_min"], b["y_min"])
-                            matched_line["y_max"] = max(matched_line["y_max"], b["y_max"])
-                            matched_line["y_center"] = sum(x["y_center"] for x in matched_line["boxes"]) / len(matched_line["boxes"])
-                        else:
-                            lines.append({
-                                "y_min": b["y_min"],
-                                "y_max": b["y_max"],
-                                "y_center": b["y_center"],
-                                "boxes": [b],
-                            })
-
-                    # Additional merge pass to ensure no split lines within vertical tolerance
-                    merged_lines = []
-                    for line in lines:
-                        merged = False
-                        for m in merged_lines:
-                            if abs(line["y_center"] - m["y_center"]) <= 0.6 * avg_box_h:
-                                m["boxes"].extend(line["boxes"])
-                                m["y_min"] = min(m["y_min"], line["y_min"])
-                                m["y_max"] = max(m["y_max"], line["y_max"])
-                                m["y_center"] = sum(x["y_center"] for x in m["boxes"]) / len(m["boxes"])
-                                merged = True
-                                break
-                        if not merged:
-                            merged_lines.append(line)
-                    lines = merged_lines
-
-                    # Sort lines strictly top-to-bottom
-                    lines.sort(key=lambda l: l["y_min"])
-
-                    # Sort boxes within lines strictly left-to-right
-                    for line in lines:
-                        line["boxes"].sort(key=lambda b: b["x_min"])
-
-                    # Calculate global_min_x and average character width char_w
-                    all_boxes = [b for line in lines for b in line["boxes"]]
-                    global_min_x = min(b["x_min"] for b in all_boxes) if all_boxes else 0.0
-                    total_box_width = sum(b["w"] for b in all_boxes)
-                    total_chars = sum(len(b["text"]) for b in all_boxes)
-                    char_w = (total_box_width / total_chars) if total_chars > 0 else 10.0
-                    char_w = max(3.0, char_w)
-
-                    line_heights = [max(1.0, line["y_max"] - line["y_min"]) for line in lines]
-                    avg_line_height = (sum(line_heights) / len(line_heights)) if line_heights else 20.0
-
-                    output_parts = []
-                    prev_line = None
-                    for line in lines:
-                        if not line["boxes"]:
-                            continue
-
-                        # Exact indentation: round((line_first_box_x - global_min_x) / char_w) * " "
-                        first_box = line["boxes"][0]
-                        line_first_box_x = first_box["x_min"]
-                        leading_px = line_first_box_x - global_min_x
-                        indent_spaces = int(round(leading_px / char_w)) if leading_px > char_w * 0.8 else 0
-                        line_str = " " * indent_spaces
-
-                        # 2. Smart horizontal joining (zero space for hyphens/dots or tight gaps)
-                        prev_box_x_max = None
-                        prev_text = ""
-                        for b in line["boxes"]:
-                            box_text = b["text"]
-                            if prev_box_x_max is not None:
-                                gap = b["x_min"] - prev_box_x_max
-                                if (
-                                    prev_text.endswith("-")
-                                    or prev_text.endswith(".")
-                                    or box_text.startswith(".")
-                                    or gap < char_w * 0.4
-                                ):
-                                    line_str += box_text
-                                else:
-                                    line_str += " " + box_text
-                            else:
-                                line_str += box_text
-                            prev_box_x_max = b["x_max"]
-                            prev_text = box_text
-
-                        line_str = line_str.rstrip()
-
-                        if prev_line is not None:
-                            vert_gap = line["y_min"] - prev_line["y_max"]
-                            if vert_gap > 1.8 * avg_line_height:
-                                output_parts.append("\n\n")
-                            else:
-                                output_parts.append("\n")
-
-                        output_parts.append(line_str)
-                        prev_line = line
-
-                    text = "".join(output_parts)
-                else:
-                    text = ""
-
+                text = OCRWorker.extract_from_image(path, ocr_engine, easyocr_reader)
                 if len(self.file_paths) > 1:
                     extracted_text += f"--- {os.path.basename(path)} ---\n{text}\n\n"
                 else:
@@ -442,6 +442,48 @@ class OCRWorker(QThread):
             self.failed.emit(f"Missing library: {e}. Please run: pip install rapidocr-onnxruntime easyocr")
         except Exception as e:
             self.failed.emit(f"OCR Error: {e}")
+
+
+class DocExportWorker(QThread):
+    """Background worker thread for fast file extension change (.docx or .txt) via shutil.copy."""
+
+    file_saved = pyqtSignal(str, str)
+    finished_all = pyqtSignal(list)
+    failed = pyqtSignal(str)
+
+    def __init__(self, file_paths: list[str] | str, target_format: str, parent=None) -> None:
+        super().__init__(parent)
+        if isinstance(file_paths, str):
+            self.file_paths = [file_paths]
+        else:
+            self.file_paths = list(file_paths)
+        self.target_format = target_format.strip().upper()
+
+    def run(self) -> None:
+        try:
+            time.sleep(0.35)  # Brief delay to allow LoadingDialog to appear smoothly
+            saved_files = []
+            for path in self.file_paths:
+                abs_path = os.path.abspath(path)
+                if not os.path.isfile(abs_path):
+                    self.failed.emit(f"File not found: {path}")
+                    return
+
+                dir_name = os.path.dirname(abs_path)
+                base_name = os.path.splitext(os.path.basename(abs_path))[0]
+                ext = f".{self.target_format.lower()}"
+                out_path = os.path.join(dir_name, f"{base_name}{ext}")
+
+                if os.path.abspath(out_path) == abs_path:
+                    out_path = os.path.join(dir_name, f"{base_name}_copy{ext}")
+
+                shutil.copy(abs_path, out_path)
+                saved_files.append(out_path)
+                self.file_saved.emit(abs_path, out_path)
+
+            self.finished_all.emit(saved_files)
+        except Exception as e:
+            self.failed.emit(f"File Copy Error: {e}")
 
 
 
@@ -2260,6 +2302,242 @@ class OCRDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class DocCompleteDialog(QDialog):
+    """Frameless translucent frosted glass dialog displaying document export completion with open actions."""
+
+    def __init__(self, file_paths: list[str], target_format: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_paths = file_paths
+        self.target_format = target_format.strip().upper()
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(450, 230)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("docCompleteContainer")
+        container.setStyleSheet("""
+            #docCompleteContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
+
+        # Header with title and close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        icon_str = "📄" if self.target_format == "DOCX" else "📝"
+        title_label = QLabel(f"{icon_str} {self.target_format} Export Complete")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_x_btn = QPushButton("✕")
+        close_x_btn.setFixedSize(22, 22)
+        close_x_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #111111;
+            }
+        """)
+        close_x_btn.clicked.connect(self.close)
+        header_layout.addWidget(close_x_btn)
+        layout.addLayout(header_layout)
+
+        # Subtitle
+        sub_text = "File successfully saved to:" if len(self.file_paths) == 1 else "Files successfully saved to:"
+        sub_label = QLabel(sub_text)
+        sub_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sub_label.setStyleSheet("color: #666666; font-size: 11px;")
+        layout.addWidget(sub_label)
+
+        # Path display box
+        path_box = QFrame()
+        path_box.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 0.04);
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 8px;
+                padding: 6px;
+            }
+        """)
+        path_layout = QVBoxLayout(path_box)
+        path_layout.setContentsMargins(8, 6, 8, 6)
+
+        first_path = self.file_paths[0] if self.file_paths else ""
+        display_text = os.path.basename(first_path) if len(self.file_paths) == 1 else f"{len(self.file_paths)} documents created"
+        file_label = QLabel(display_text)
+        file_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        file_label.setStyleSheet("font-size: 13px; font-weight: 600; color: #ff5500;")
+        path_layout.addWidget(file_label)
+
+        if len(self.file_paths) == 1:
+            dir_label = QLabel(os.path.dirname(first_path))
+            dir_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            dir_label.setStyleSheet("font-size: 10px; color: #888888;")
+            path_layout.addWidget(dir_label)
+
+        layout.addWidget(path_box)
+
+        # Bottom buttons
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        open_folder_btn = QPushButton("Open Folder")
+        open_folder_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 14px;
+                font-weight: 500;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+        """)
+        open_folder_btn.clicked.connect(self._open_folder)
+        bottom_layout.addWidget(open_folder_btn)
+
+        if len(self.file_paths) == 1:
+            open_file_btn = QPushButton("Open File")
+            open_file_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(0, 0, 0, 0.06);
+                    color: #444444;
+                    border: none;
+                    border-radius: 6px;
+                    padding: 7px 14px;
+                    font-weight: 500;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: rgba(0, 0, 0, 0.1);
+                    color: #222222;
+                }
+            """)
+            open_file_btn.clicked.connect(self._open_file)
+            bottom_layout.addWidget(open_file_btn)
+
+        bottom_layout.addStretch()
+
+        done_btn = QPushButton("Done")
+        done_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 7px 20px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #e64200;
+            }
+            QPushButton:pressed {
+                background-color: #cc3b00;
+            }
+        """)
+        done_btn.clicked.connect(self.close)
+        bottom_layout.addWidget(done_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _open_file(self) -> None:
+        if not self.file_paths:
+            return
+        path = os.path.abspath(self.file_paths[0])
+        try:
+            if sys.platform == "win32":
+                os.startfile(path)
+            elif sys.platform == "darwin":
+                subprocess.run(["open", path])
+            else:
+                subprocess.run(["xdg-open", path])
+        except Exception as e:
+            print(f"[QuickDrop] Error opening file: {e}")
+
+    def _open_folder(self) -> None:
+        if not self.file_paths:
+            return
+        folder = os.path.dirname(os.path.abspath(self.file_paths[0]))
+        try:
+            if sys.platform == "win32":
+                subprocess.run(["explorer", folder])
+            elif sys.platform == "darwin":
+                subprocess.run(["open", folder])
+            else:
+                subprocess.run(["xdg-open", folder])
+        except Exception as e:
+            print(f"[QuickDrop] Error opening folder: {e}")
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            screen_geo = screen.availableGeometry()
+            x = (screen_geo.width() - self.width()) // 2
+            y = (screen_geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if event.buttons() == Qt.MouseButton.LeftButton and getattr(self, "_drag_start_pos", None) is not None:
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.close()
+        else:
+            super().keyPressEvent(event)
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -2362,6 +2640,11 @@ class QuickDropBridge(QObject):
         print(f"DEBUG: trigger_action called with: {action_name}")
         self.window._handle_action_click(action_name)
 
+    @QtCore.pyqtSlot(str)
+    def open_file_dialog(self, action_name: str) -> None:
+        print(f"DEBUG: open_file_dialog called with: {action_name}")
+        self.window.open_file_dialog(action_name)
+
 
 class TransparentWebDropZone(ZoomLockedWebEngineView):
     """Frameless translucent WebEngine radial drop zone with macOS glassmorphism."""
@@ -2397,8 +2680,10 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._is_floating = True
         self._workers: list[ConversionWorker] = []
         self._ocr_workers: list[OCRWorker] = []
+        self._doc_workers: list[DocExportWorker] = []
         self._dialogs: list[QDialog] = []
         self._is_processing = False
+        self.process_file_action = self.process_dropped_files
 
         # Lock UI zoom strictly to 1.0 and hook title changes for click-to-execute
         self.setZoomFactor(1.0)
@@ -2491,6 +2776,145 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._sync_modifier("DEFAULT")
         event.accept()
 
+    def process_dropped_files(self, action_name: str, file_paths: list[str]) -> None:
+        """Route file paths and action to the processing/conversion pipeline."""
+        action_name = action_name.strip() if action_name else "None"
+        if isinstance(file_paths, str):
+            file_paths = [file_paths]
+        for path in file_paths:
+            print(f"ACTION: {action_name} | FILE: {path}")
+        self.page().runJavaScript("window.clearHover();")
+        self._sync_modifier("DEFAULT")
+
+        act_upper = action_name.strip().upper()
+
+        if act_upper == "COMPRESS":
+            for path in file_paths:
+                dialog = CompressDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "CROP":
+            for path in file_paths:
+                dialog = CropDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "METADATA":
+            for path in file_paths:
+                dialog = MetadataDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "COLOR":
+            for path in file_paths:
+                dialog = ColorDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "SCREENSHOT":
+            self._execute_screenshot()
+        elif act_upper == "TERMINAL":
+            if file_paths:
+                for path in file_paths:
+                    self._execute_terminal(path)
+            else:
+                self._execute_terminal()
+        elif act_upper in ("CLOSE", "QUIT", "EXIT"):
+            self.close_app()
+        elif act_upper in ("FLOAT", "PIN") or act_upper.startswith("FLOAT"):
+            self.toggle_float_on_top()
+        elif act_upper in ["COPY PATH", "COPY_PATH"]:
+            paths_string = "\n".join([os.path.abspath(p) for p in file_paths])
+
+            # 1. Standard PyQt6 approach
+            clipboard = QApplication.clipboard()
+            clipboard.setText(paths_string)
+            QApplication.processEvents()
+
+            # 2. OS-Native Hardcore Fallback (Bypasses GUI clipboard issues completely)
+            try:
+                if sys.platform == "linux":
+                    if shutil.which("wl-copy"):
+                        subprocess.run(["wl-copy"], input=paths_string.encode(), check=True)
+                    elif shutil.which("xclip"):
+                        subprocess.run(["xclip", "-selection", "clipboard"], input=paths_string.encode(), check=True)
+                elif sys.platform == "darwin":
+                    subprocess.run(["pbcopy"], input=paths_string.encode(), check=True)
+                elif sys.platform == "win32":
+                    subprocess.run(["clip"], input=paths_string.encode(), check=True)
+            except Exception as e:
+                print(f"[QuickDrop] Native clipboard fallback error: {e}")
+
+            print(f"[QuickDrop] Copied path(s) to system clipboard:\n{paths_string}")
+            self.page().runJavaScript(
+                """
+                (function() {
+                    const cat = document.getElementById('tooltip-category');
+                    const txt = document.getElementById('tooltip-text');
+                    const tip = document.getElementById('tooltip');
+                    if (cat) cat.textContent = 'Clipboard';
+                    if (txt) txt.textContent = 'Copied!';
+                    if (tip) tip.classList.add('visible', 'active');
+                    setTimeout(() => {
+                        if (window.clearHover && !window.isProcessing) window.clearHover();
+                    }, 1200);
+                })();
+                """
+            )
+        elif act_upper == "OCR":
+            self._start_ocr(file_paths)
+        elif act_upper in ("DOCX", "TXT"):
+            self._start_doc_conversion(file_paths, act_upper)
+        elif (
+            act_upper == "ADD BG"
+            or act_upper in ConversionWorker.FORMAT_MAP
+        ):
+            self._start_conversion(file_paths, act_upper)
+
+    def open_file_dialog(self, action_name: str) -> None:
+        """Open native QFileDialog to select a file and route to the action pipeline."""
+        now = time.time()
+        if now - getattr(self, "_last_dialog_time", 0) < 0.3:
+            return
+        self._last_dialog_time = now
+
+        act_upper = action_name.strip().upper()
+        if act_upper in ("CLOSE", "QUIT", "EXIT"):
+            self.close_app()
+            return
+        if act_upper in ("FLOAT", "PIN") or act_upper.startswith("FLOAT"):
+            self.toggle_float_on_top()
+            return
+        if act_upper == "SCREENSHOT":
+            self._execute_screenshot()
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            f"Select File for {action_name.strip()}",
+            os.path.expanduser("~"),
+            "All Files (*.*);;All Files (*)",
+        )
+        if file_path:
+            self.process_dropped_files(action_name, [file_path])
+
     def dropEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
@@ -2501,109 +2925,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             ]
 
             def on_action_received(action: str | None) -> None:
-                action_name = action.strip() if action else "None"
-                for path in file_paths:
-                    print(f"ACTION: {action_name} | FILE: {path}")
-                self.page().runJavaScript("window.clearHover();")
-                self._sync_modifier("DEFAULT")
-
-                if action_name == "COMPRESS":
-                    for path in file_paths:
-                        dialog = CompressDialog(path, self)
-                        dialog.show()
-                        self._dialogs.append(dialog)
-                        dialog.finished.connect(
-                            lambda _, d=dialog: self._dialogs.remove(d)
-                            if d in self._dialogs
-                            else None
-                        )
-                elif action_name == "CROP":
-                    for path in file_paths:
-                        dialog = CropDialog(path, self)
-                        dialog.show()
-                        self._dialogs.append(dialog)
-                        dialog.finished.connect(
-                            lambda _, d=dialog: self._dialogs.remove(d)
-                            if d in self._dialogs
-                            else None
-                        )
-                elif action_name.strip().upper() == "METADATA":
-                    for path in file_paths:
-                        dialog = MetadataDialog(path, self)
-                        dialog.show()
-                        self._dialogs.append(dialog)
-                        dialog.finished.connect(
-                            lambda _, d=dialog: self._dialogs.remove(d)
-                            if d in self._dialogs
-                            else None
-                        )
-                elif action_name.strip().upper() == "COLOR":
-                    for path in file_paths:
-                        dialog = ColorDialog(path, self)
-                        dialog.show()
-                        self._dialogs.append(dialog)
-                        dialog.finished.connect(
-                            lambda _, d=dialog: self._dialogs.remove(d)
-                            if d in self._dialogs
-                            else None
-                        )
-                elif action_name == "SCREENSHOT":
-                    self._execute_screenshot()
-                elif action_name == "TERMINAL":
-                    if file_paths:
-                        for path in file_paths:
-                            self._execute_terminal(path)
-                    else:
-                        self._execute_terminal()
-                elif action_name.strip().upper() in ("CLOSE", "QUIT", "EXIT"):
-                    self.close_app()
-                elif action_name.strip().upper() in ("FLOAT", "PIN") or action_name.strip().upper().startswith("FLOAT"):
-                    self.toggle_float_on_top()
-                elif action_name in ["COPY PATH", "COPY_PATH"]:
-                    paths_string = "\n".join([os.path.abspath(p) for p in file_paths])
-
-                    # 1. Standard PyQt6 approach
-                    clipboard = QApplication.clipboard()
-                    clipboard.setText(paths_string)
-                    QApplication.processEvents()
-
-                    # 2. OS-Native Hardcore Fallback (Bypasses GUI clipboard issues completely)
-                    try:
-                        if sys.platform == "linux":
-                            if shutil.which("wl-copy"):
-                                subprocess.run(["wl-copy"], input=paths_string.encode(), check=True)
-                            elif shutil.which("xclip"):
-                                subprocess.run(["xclip", "-selection", "clipboard"], input=paths_string.encode(), check=True)
-                        elif sys.platform == "darwin":
-                            subprocess.run(["pbcopy"], input=paths_string.encode(), check=True)
-                        elif sys.platform == "win32":
-                            subprocess.run(["clip"], input=paths_string.encode(), check=True)
-                    except Exception as e:
-                        print(f"[QuickDrop] Native clipboard fallback error: {e}")
-
-                    print(f"[QuickDrop] Copied path(s) to system clipboard:\n{paths_string}")
-                    self.page().runJavaScript(
-                        """
-                        (function() {
-                            const cat = document.getElementById('tooltip-category');
-                            const txt = document.getElementById('tooltip-text');
-                            const tip = document.getElementById('tooltip');
-                            if (cat) cat.textContent = 'Clipboard';
-                            if (txt) txt.textContent = 'Copied!';
-                            if (tip) tip.classList.add('visible', 'active');
-                            setTimeout(() => {
-                                if (window.clearHover && !window.isProcessing) window.clearHover();
-                            }, 1200);
-                        })();
-                        """
-                    )
-                elif action_name == "OCR":
-                    self._start_ocr(file_paths)
-                elif (
-                    action_name.strip().upper() == "ADD BG"
-                    or action_name.strip().upper() in ConversionWorker.FORMAT_MAP
-                ):
-                    self._start_conversion(file_paths, action_name.strip().upper())
+                self.process_dropped_files(action or "None", file_paths)
 
             self.page().runJavaScript(
                 "window.currentHoveredAction", on_action_received
@@ -2813,6 +3135,106 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._ocr_workers.append(worker)
         worker.start()
 
+    def _start_doc_conversion(self, file_paths: list[str], target_format: str) -> None:
+        """Asynchronously copy file with .docx or .txt extension via background worker."""
+        self._is_processing = True
+        fmt = target_format.strip().upper()
+
+        self.page().runJavaScript(
+            f"""
+            window.isProcessing = true;
+            (function() {{
+                const cat = document.getElementById('tooltip-category');
+                const txt = document.getElementById('tooltip-text');
+                const tip = document.getElementById('tooltip');
+                if (cat) cat.textContent = 'Copying';
+                if (txt) txt.textContent = 'Creating {fmt}...';
+                if (tip) tip.classList.add('visible');
+            }})();
+            """
+        )
+
+        icon_str = "📄" if fmt == "DOCX" else "📝"
+        loading_dialog = LoadingDialog(
+            title="Processing... Please wait",
+            subtitle=f"{icon_str} Creating {fmt}... Please wait",
+            parent=self,
+        )
+        loading_dialog.show()
+
+        worker = DocExportWorker(file_paths, fmt, self)
+        worker.file_saved.connect(
+            lambda src, dst: print(f"[QuickDrop] Copied '{src}' -> '{dst}'")
+        )
+
+        def on_finished(saved_files: list[str]) -> None:
+            loading_dialog.close()
+            self._is_processing = False
+            if worker in self._doc_workers:
+                self._doc_workers.remove(worker)
+
+            self.page().runJavaScript(
+                f"""
+                (function() {{
+                    window.isProcessing = false;
+                    const cat = document.getElementById('tooltip-category');
+                    const txt = document.getElementById('tooltip-text');
+                    const tip = document.getElementById('tooltip');
+                    if (cat) cat.textContent = '{fmt}';
+                    if (txt) txt.textContent = '✓ Saved';
+                    if (tip) tip.classList.add('visible', 'active');
+                    setTimeout(() => {{
+                        if (window.clearHover && !window.isProcessing) window.clearHover();
+                    }}, 1500);
+                }})();
+                """
+            )
+
+            dialog = DocCompleteDialog(saved_files, fmt, parent=self)
+            dialog.show()
+            self._dialogs.append(dialog)
+            dialog.finished.connect(
+                lambda _, d=dialog: self._dialogs.remove(d)
+                if d in self._dialogs
+                else None
+            )
+
+        def on_failure(err_msg: str) -> None:
+            loading_dialog.close()
+            self._is_processing = False
+            if worker in self._doc_workers:
+                self._doc_workers.remove(worker)
+
+            self.page().runJavaScript(
+                """
+                (function() {
+                    window.isProcessing = false;
+                    const cat = document.getElementById('tooltip-category');
+                    const txt = document.getElementById('tooltip-text');
+                    const tip = document.getElementById('tooltip');
+                    if (cat) cat.textContent = 'Error';
+                    if (txt) txt.textContent = 'Failed';
+                    setTimeout(() => {
+                        if (window.clearHover && !window.isProcessing) window.clearHover();
+                    }, 1500);
+                })();
+                """
+            )
+
+            dialog = OCRDialog(f"File Copy Failed:\n{err_msg}", parent=self)
+            dialog.show()
+            self._dialogs.append(dialog)
+            dialog.finished.connect(
+                lambda _, d=dialog: self._dialogs.remove(d)
+                if d in self._dialogs
+                else None
+            )
+
+        worker.finished_all.connect(on_finished)
+        worker.failed.connect(on_failure)
+        self._doc_workers.append(worker)
+        worker.start()
+
     # ── Click-to-Execute Utilities (SCREENSHOT / TERMINAL) ─────────
 
     def _on_title_changed(self, title: str) -> None:
@@ -2841,6 +3263,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._execute_terminal()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
+        else:
+            self.open_file_dialog(action_name)
 
     def toggle_float_on_top(self, enable: bool | None = None) -> None:
         """Safely toggle window float state forwarding to the bridge."""

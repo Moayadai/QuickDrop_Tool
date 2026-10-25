@@ -661,12 +661,93 @@
       }
     }
 
+    // ── Premium Acoustic Feedback (Web Audio API Synthesizer) ──
+    let audioCtx = null;
+
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioContextClass) {
+          audioCtx = new AudioContextClass();
+        }
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // Pre-unlock audio context on user gesture to eliminate any audio latency
+    ['mousedown', 'mousemove', 'keydown', 'touchstart'].forEach((evt) => {
+      window.addEventListener(evt, () => {
+        try {
+          const ctx = getAudioContext();
+          if (ctx && ctx.state === 'suspended') {
+            ctx.resume();
+          }
+        } catch (_) {}
+      }, { once: true, passive: true });
+    });
+
+    /**
+     * Synthesizes an ultra-subtle, tactile mechanical tick (watch escapement / luxury dial feel).
+     * Zero audio asset latency, pure mathematical audio synthesis.
+     */
+    function playDialTick() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        if (ctx.state === 'suspended') {
+          ctx.resume();
+        }
+
+        const t = ctx.currentTime;
+
+        // Layer 1: High transient mechanical click snap (triangle wave, rapid pitch sweep)
+        const oscClick = ctx.createOscillator();
+        const gainClick = ctx.createGain();
+        oscClick.type = 'triangle';
+        oscClick.frequency.setValueAtTime(2400, t);
+        oscClick.frequency.exponentialRampToValueAtTime(700, t + 0.008);
+
+        gainClick.gain.setValueAtTime(0.04, t);
+        gainClick.gain.exponentialRampToValueAtTime(0.0001, t + 0.008);
+
+        oscClick.connect(gainClick);
+        gainClick.connect(ctx.destination);
+
+        oscClick.start(t);
+        oscClick.stop(t + 0.009);
+
+        // Layer 2: Subtle acoustic body damping (sine wave, mechanical precision resonance)
+        const oscBody = ctx.createOscillator();
+        const gainBody = ctx.createGain();
+        oscBody.type = 'sine';
+        oscBody.frequency.setValueAtTime(1300, t);
+        oscBody.frequency.exponentialRampToValueAtTime(350, t + 0.013);
+
+        gainBody.gain.setValueAtTime(0.03, t);
+        gainBody.gain.exponentialRampToValueAtTime(0.0001, t + 0.013);
+
+        oscBody.connect(gainBody);
+        gainBody.connect(ctx.destination);
+
+        oscBody.start(t);
+        oscBody.stop(t + 0.014);
+      } catch (_) {
+        // Safe no-op if audio context is blocked or unavailable
+      }
+    }
+
     /**
      * Activates a petal with spring physics, scale(1.08), and vibrant tangerine shift.
      * @param {number} index
      */
     function setActivePetal(index) {
       if (index === currentHoverIndex) return;
+      if (index >= 0 && index < 10) {
+        playDialTick();
+      }
       currentHoverIndex = index;
 
       for (let i = 0; i < 10; i++) {
@@ -796,8 +877,9 @@
       const act = action.trim().toUpperCase();
 
       if (act === 'CLOSE' || act === 'QUIT' || act === 'EXIT') {
-        if (window.backend && typeof window.backend.close_app === 'function') {
-          window.backend.close_app();
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.close_app === 'function') {
+          b.close_app();
         } else {
           document.title = 'quickdrop:action:CLOSE:' + Date.now();
         }
@@ -810,20 +892,32 @@
         window.isFloating = nextState;
         updateFloatVisualState();
 
-        if (window.backend && typeof window.backend.toggle_float_on_top === 'function') {
-          window.backend.toggle_float_on_top(Boolean(nextState));
-        } else if (typeof backend !== 'undefined' && backend && typeof backend.toggle_float_on_top === 'function') {
-          backend.toggle_float_on_top(Boolean(nextState));
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.toggle_float_on_top === 'function') {
+          b.toggle_float_on_top(Boolean(nextState));
+        } else if (b && typeof b.trigger_action === 'function') {
+          b.trigger_action(act);
         } else {
           document.title = 'quickdrop:action:FLOAT:' + (nextState ? '1' : '0') + ':' + Date.now();
         }
         return;
       }
 
-      if (window.backend && typeof window.backend.trigger_action === 'function') {
-        window.backend.trigger_action(act);
-      } else if (typeof backend !== 'undefined' && backend && typeof backend.trigger_action === 'function') {
-        backend.trigger_action(act);
+      if (act === 'SCREENSHOT') {
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.trigger_action === 'function') {
+          b.trigger_action(act);
+        } else {
+          document.title = 'quickdrop:action:' + act + ':' + Date.now();
+        }
+        return;
+      }
+
+      const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+      if (b && typeof b.open_file_dialog === 'function') {
+        b.open_file_dialog(act);
+      } else if (b && typeof b.trigger_action === 'function') {
+        b.trigger_action(act);
       } else {
         document.title = 'quickdrop:action:' + act + ':' + Date.now();
       }
@@ -841,22 +935,26 @@
     let isDraggingWindow = false;
 
     document.addEventListener('mousedown', (e) => {
-        if (!e.target.closest('button') && !e.target.closest('.action-btn')) {
+        const isInteractive = e.target.closest('button') ||
+                              e.target.closest('.action-btn') ||
+                              e.target.closest('.petal-group') ||
+                              e.target.closest('.petal-slice') ||
+                              e.target.closest('.petal') ||
+                              e.target.closest('.segment-label');
+        if (!isInteractive) {
             isDraggingWindow = true;
-            if (typeof backend !== 'undefined' && backend && backend.start_drag) {
-                backend.start_drag();
-            } else if (window.backend && window.backend.start_drag) {
-                window.backend.start_drag();
+            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+            if (b && b.start_drag) {
+                b.start_drag();
             }
         }
     });
 
     document.addEventListener('mousemove', (e) => {
         if (isDraggingWindow) {
-            if (typeof backend !== 'undefined' && backend && backend.do_drag) {
-                backend.do_drag();
-            } else if (window.backend && window.backend.do_drag) {
-                window.backend.do_drag();
+            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+            if (b && b.do_drag) {
+                b.do_drag();
             }
         }
         if (!isDraggingWindow) {
@@ -865,7 +963,13 @@
     });
 
     document.addEventListener('mouseup', () => { 
-        isDraggingWindow = false; 
+        if (isDraggingWindow) {
+            isDraggingWindow = false;
+            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+            if (b && b.stop_drag) {
+                b.stop_drag();
+            }
+        }
     });
 
     // Standard in-page mouse and petal interaction
@@ -873,11 +977,34 @@
       const group = document.getElementById(`petal-group-${i}`);
       const slice = document.getElementById(`slice-${i}`);
       const handlePetalClick = (e) => {
-        if (e && e.stopPropagation) e.stopPropagation();
+        if (e) {
+          if (e.stopPropagation) e.stopPropagation();
+          if (e.preventDefault) e.preventDefault();
+        }
         if (isDraggingWindow) return;
+        const sliceEl = document.getElementById(`slice-${i}`);
         const label = document.getElementById(`label-${i}`);
-        const action = (label ? label.textContent.trim() : '') || window.currentHoveredAction;
-        triggerActionIfApplicable(action);
+        const action = (sliceEl ? (sliceEl.dataset.format || sliceEl.getAttribute('data-format')) : '')
+                      || (label ? label.textContent.trim() : '')
+                      || window.currentHoveredAction;
+        if (!action) return;
+        const act = action.trim().toUpperCase();
+
+        if (act === 'CLOSE' || act === 'QUIT' || act === 'EXIT') {
+          triggerActionIfApplicable(act);
+          return;
+        }
+        if (act.startsWith('FLOAT') || act === 'PIN') {
+          triggerActionIfApplicable(act);
+          return;
+        }
+
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.open_file_dialog === 'function') {
+          b.open_file_dialog(act);
+        } else {
+          triggerActionIfApplicable(act);
+        }
       };
 
       if (group) {
