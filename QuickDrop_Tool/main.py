@@ -24,7 +24,7 @@ except ImportError:
     sys.modules["PyQt5.QtWidgets"] = _widgets
     from PyQt5.QtGui import QCursor
 
-from PIL import Image, ImageEnhance, ImageFilter, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageDraw, ImageEnhance, ImageFilter, ImageFont, ImageOps, UnidentifiedImageError
 from PIL.ExifTags import GPSTAGS, TAGS
 import pillow_heif
 
@@ -47,15 +47,17 @@ from PyQt6.QtCore import (
 )
 import PyQt6.QtCore as QtCore
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtGui import QBrush, QClipboard, QColor, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QBrush, QClipboard, QColor, QFont, QImage, QPainter, QPen, QPixmap
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QComboBox,
     QDialog,
     QFileDialog,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QLineEdit,
     QProgressBar,
     QPushButton,
     QSlider,
@@ -2538,6 +2540,1044 @@ class DocCompleteDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class WatermarkDialog(QDialog):
+    """Frameless dark-themed dialog for applying custom text watermarks with opacity and positioning."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(500, 580)
+
+        self._setup_ui()
+        self._center_on_screen()
+        self._update_preview()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("watermarkContainer")
+        container.setStyleSheet("""
+            #watermarkContainer {
+                background-color: #1a1a1e;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #e5e5ea;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+            QLineEdit {
+                background-color: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 6px;
+                color: #ffffff;
+                padding: 6px 10px;
+                font-size: 13px;
+            }
+            QLineEdit:focus {
+                border: 1px solid #ff5500;
+            }
+            QComboBox {
+                background-color: rgba(255, 255, 255, 0.08);
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 6px;
+                color: #ffffff;
+                padding: 4px 8px;
+                font-size: 12px;
+                min-width: 120px;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #242429;
+                color: #ffffff;
+                selection-background-color: #ff5500;
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: rgba(255, 255, 255, 0.14);
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #ff5500;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.2);
+                width: 16px;
+                height: 16px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 8px;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        # Header
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Watermark Image")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(255, 255, 255, 0.4);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        filename_label = QLabel(os.path.basename(self.file_path))
+        filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        filename_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        layout.addWidget(filename_label)
+
+        # Preview area
+        self.preview_frame = QFrame()
+        self.preview_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 0.35);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+            }
+        """)
+        preview_layout = QVBoxLayout(self.preview_frame)
+        preview_layout.setContentsMargins(6, 6, 6, 6)
+
+        self.preview_label = QLabel()
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(190)
+        preview_layout.addWidget(self.preview_label)
+        layout.addWidget(self.preview_frame, stretch=1)
+
+        # Text input row
+        text_row = QHBoxLayout()
+        text_row.setSpacing(8)
+        text_lbl = QLabel("Text:")
+        text_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px;")
+        self.text_input = QLineEdit("CONFIDENTIAL")
+        self.text_input.textChanged.connect(self._update_preview)
+        text_row.addWidget(text_lbl)
+        text_row.addWidget(self.text_input)
+        layout.addLayout(text_row)
+
+        # Position and color row
+        pos_row = QHBoxLayout()
+        pos_row.setSpacing(8)
+        pos_lbl = QLabel("Position:")
+        pos_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px;")
+        self.pos_combo = QComboBox()
+        self.pos_combo.addItems(["Center", "Bottom Right", "Bottom Left", "Top Right", "Top Left", "Tiled / Diagonal"])
+        self.pos_combo.currentIndexChanged.connect(self._update_preview)
+        pos_row.addWidget(pos_lbl)
+        pos_row.addWidget(self.pos_combo)
+
+        pos_row.addSpacing(10)
+        color_lbl = QLabel("Color:")
+        color_lbl.setStyleSheet("font-size: 12px; font-weight: 600;")
+        self.color_combo = QComboBox()
+        self.color_combo.addItems(["White", "Black"])
+        self.color_combo.currentIndexChanged.connect(self._update_preview)
+        pos_row.addWidget(color_lbl)
+        pos_row.addWidget(self.color_combo)
+        layout.addLayout(pos_row)
+
+        # Opacity slider row
+        op_row = QHBoxLayout()
+        op_row.setSpacing(8)
+        self.op_lbl = QLabel("Opacity: 45%")
+        self.op_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.op_slider = QSlider(Qt.Orientation.Horizontal)
+        self.op_slider.setRange(5, 100)
+        self.op_slider.setValue(45)
+        self.op_slider.valueChanged.connect(self._on_opacity_changed)
+        op_row.addWidget(self.op_lbl)
+        op_row.addWidget(self.op_slider)
+        layout.addLayout(op_row)
+
+        # Size slider row
+        size_row = QHBoxLayout()
+        size_row.setSpacing(8)
+        self.size_lbl = QLabel("Font Size: 36px")
+        self.size_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.size_slider = QSlider(Qt.Orientation.Horizontal)
+        self.size_slider.setRange(14, 100)
+        self.size_slider.setValue(36)
+        self.size_slider.valueChanged.connect(self._on_size_changed)
+        size_row.addWidget(self.size_lbl)
+        size_row.addWidget(self.size_slider)
+        layout.addLayout(size_row)
+
+        # Bottom buttons
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+        bottom_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #e5e5ea;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        bottom_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Watermark")
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        apply_btn.clicked.connect(self._on_apply)
+        bottom_layout.addWidget(apply_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _on_opacity_changed(self, val: int) -> None:
+        self.op_lbl.setText(f"Opacity: {val}%")
+        self._update_preview()
+
+    def _on_size_changed(self, val: int) -> None:
+        self.size_lbl.setText(f"Font Size: {val}px")
+        self._update_preview()
+
+    @staticmethod
+    def _get_font(size: int):
+        font_candidates = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+            "C:\\Windows\\Fonts\\arial.ttf",
+            "C:\\Windows\\Fonts\\segoeui.ttf",
+            "/System/Library/Fonts/Helvetica.ttc",
+            "/Library/Fonts/Arial.ttf",
+            "DejaVuSans.ttf",
+            "arial.ttf",
+        ]
+        for p in font_candidates:
+            if os.path.isfile(p):
+                try:
+                    return ImageFont.truetype(p, size)
+                except Exception:
+                    pass
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                pass
+        try:
+            return ImageFont.load_default(size=size)
+        except Exception:
+            return ImageFont.load_default()
+
+    @staticmethod
+    def _measure_text(draw: ImageDraw.ImageDraw, text: str, font) -> tuple[int, int]:
+        if hasattr(draw, "textbbox"):
+            bbox = draw.textbbox((0, 0), text, font=font)
+            return max(1, bbox[2] - bbox[0]), max(1, bbox[3] - bbox[1])
+        elif hasattr(draw, "textsize"):
+            return draw.textsize(text, font=font)
+        return max(1, len(text) * 10), 20
+
+    @staticmethod
+    def apply_watermark_to_pil(img: Image.Image, text: str, opacity: int, position: str, font_size: int, is_white: bool) -> Image.Image:
+        base = img.convert("RGBA")
+        txt_layer = Image.new("RGBA", base.size, (255, 255, 255, 0))
+        draw = ImageDraw.Draw(txt_layer)
+
+        font = WatermarkDialog._get_font(font_size)
+        tw, th = WatermarkDialog._measure_text(draw, text, font)
+        alpha = int(255 * (max(5, min(100, opacity)) / 100.0))
+        rgb = (255, 255, 255) if is_white else (0, 0, 0)
+        fill_color = (rgb[0], rgb[1], rgb[2], alpha)
+
+        w, h = base.size
+        pad = 20
+
+        if position == "Tiled / Diagonal":
+            stamp_w = tw + 80
+            stamp_h = th + 80
+            stamp = Image.new("RGBA", (stamp_w, stamp_h), (255, 255, 255, 0))
+            s_draw = ImageDraw.Draw(stamp)
+            s_draw.text((40, 40), text, font=font, fill=fill_color)
+            rotated = stamp.rotate(30, expand=True, resample=Image.Resampling.BICUBIC)
+            rw, rh = rotated.size
+            for y_pos in range(-rh, h + rh, max(20, rh)):
+                for x_pos in range(-rw, w + rw, max(20, rw)):
+                    txt_layer.paste(rotated, (x_pos, y_pos), rotated)
+        else:
+            if position == "Center":
+                x = (w - tw) // 2
+                y = (h - th) // 2
+            elif position == "Bottom Right":
+                x = max(pad, w - tw - pad)
+                y = max(pad, h - th - pad)
+            elif position == "Bottom Left":
+                x = pad
+                y = max(pad, h - th - pad)
+            elif position == "Top Right":
+                x = max(pad, w - tw - pad)
+                y = pad
+            else:  # Top Left
+                x = pad
+                y = pad
+            draw.text((x, y), text, font=font, fill=fill_color)
+
+        return Image.alpha_composite(base, txt_layer)
+
+    def _update_preview(self) -> None:
+        if not os.path.isfile(self.file_path):
+            return
+        try:
+            with Image.open(self.file_path) as orig:
+                thumb = orig.copy()
+                thumb.thumbnail((440, 200), Image.Resampling.LANCZOS)
+                scale = thumb.width / float(orig.width) if orig.width > 0 else 1.0
+
+                text = self.text_input.text() or " "
+                opacity = self.op_slider.value()
+                pos = self.pos_combo.currentText()
+                is_white = (self.color_combo.currentText() == "White")
+                scaled_font_size = max(10, int(self.size_slider.value() * scale))
+
+                preview_img = WatermarkDialog.apply_watermark_to_pil(
+                    thumb, text, opacity, pos, scaled_font_size, is_white
+                )
+
+                raw_data = preview_img.convert("RGBA").tobytes("raw", "RGBA")
+                qimg = QImage(raw_data, preview_img.width, preview_img.height, QImage.Format.Format_RGBA8888)
+                self.preview_label.setPixmap(QPixmap.fromImage(qimg))
+        except Exception as e:
+            print(f"[QuickDrop] Watermark preview error: {e}")
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def _on_apply(self) -> None:
+        try:
+            dir_name = os.path.dirname(os.path.abspath(self.file_path))
+            base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+            output_path = os.path.join(dir_name, f"{base_name}_watermarked{ext}")
+
+            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
+                output_path = os.path.join(dir_name, f"{base_name}_watermarked_1{ext}")
+
+            text = self.text_input.text() or "CONFIDENTIAL"
+            opacity = self.op_slider.value()
+            pos = self.pos_combo.currentText()
+            is_white = (self.color_combo.currentText() == "White")
+            font_size = self.size_slider.value()
+
+            with Image.open(self.file_path) as img:
+                watermarked = WatermarkDialog.apply_watermark_to_pil(
+                    img, text, opacity, pos, font_size, is_white
+                )
+                ext_lower = ext.lower()
+                if ext_lower in (".jpg", ".jpeg"):
+                    watermarked.convert("RGB").save(output_path, "JPEG", quality=95)
+                elif ext_lower == ".png":
+                    watermarked.save(output_path, "PNG", optimize=True)
+                elif ext_lower == ".webp":
+                    watermarked.save(output_path, "WEBP", quality=95)
+                else:
+                    fmt = img.format or "PNG"
+                    watermarked.save(output_path, format=fmt)
+
+            print(f"[QuickDrop] Watermarked '{self.file_path}' -> '{output_path}'")
+            self.accept()
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Watermark error: {e}")
+            self.reject()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+
+class RedactCanvasWidget(QWidget):
+    """Interactive canvas allowing the user to actively drag a rectangle to redact with real-time live preview."""
+
+    selection_changed = pyqtSignal()
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self.original_pixmap = QPixmap(file_path)
+        self._pixmap = self.original_pixmap
+        self._img_w = max(1, self.original_pixmap.width() if not self.original_pixmap.isNull() else 100)
+        self._img_h = max(1, self.original_pixmap.height() if not self.original_pixmap.isNull() else 100)
+
+        # Cache base PIL image for responsive live effect generation
+        try:
+            with Image.open(file_path) as pil_img:
+                self._base_pil_img = ImageOps.exif_transpose(pil_img).convert("RGBA")
+        except Exception as e:
+            print(f"[QuickDrop] Redact image load warning: {e}")
+            self._base_pil_img = None
+
+        self.effect_pixmap = self.original_pixmap.copy()
+        self.generate_effect_pixmap("Blur", 15)
+
+        self._start_point: QPointF | None = None
+        self._current_point: QPointF | None = None
+        self._is_dragging = False
+
+        # Selection rectangle in widget display coordinates (QRectF)
+        self.selection_rect: QRectF | None = None
+        # Redact box in original image pixel coordinates (x1, y1, x2, y2)
+        self.redact_rect: tuple[int, int, int, int] | None = None
+
+        self.setMinimumSize(360, 220)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def generate_effect_pixmap(self, effect: str = "Blur", intensity: int = 18) -> None:
+        """Generate self.effect_pixmap from the original image using Pillow based on the active effect."""
+        try:
+            base = getattr(self, "_base_pil_img", None)
+            if base is None:
+                with Image.open(self.file_path) as img:
+                    base = ImageOps.exif_transpose(img).convert("RGBA")
+                    self._base_pil_img = base
+
+            eff_name = (effect or "Blur").strip().capitalize()
+
+            if eff_name == "Blur":
+                radius = max(1, int(intensity))
+                processed = base.filter(ImageFilter.GaussianBlur(radius=radius))
+            elif eff_name == "Pixelate":
+                step = max(2, int(intensity))
+                pw = max(1, base.width // step)
+                ph = max(1, base.height // step)
+                small = base.resize((pw, ph), Image.Resampling.NEAREST)
+                processed = small.resize((base.width, base.height), Image.Resampling.NEAREST)
+            elif eff_name == "Blackout":
+                processed = Image.new("RGBA", base.size, (0, 0, 0, 255))
+            else:
+                radius = max(1, int(intensity))
+                processed = base.filter(ImageFilter.GaussianBlur(radius=radius))
+
+            raw_bytes = processed.tobytes("raw", "RGBA")
+            qimg = QImage(raw_bytes, processed.width, processed.height, QImage.Format.Format_RGBA8888).copy()
+            self.effect_pixmap = QPixmap.fromImage(qimg)
+        except Exception as e:
+            print(f"[QuickDrop] Redact effect generation warning: {e}")
+            self.effect_pixmap = self.original_pixmap.copy()
+
+        self.update()
+
+    def _get_display_rect(self) -> QRectF:
+        w_avail = float(max(10, self.width()))
+        h_avail = float(max(10, self.height()))
+        aspect_img = self._img_w / float(self._img_h)
+        aspect_avail = w_avail / h_avail
+
+        if aspect_avail > aspect_img:
+            draw_h = h_avail
+            draw_w = draw_h * aspect_img
+            draw_x = (w_avail - draw_w) / 2.0
+            draw_y = 0.0
+        else:
+            draw_w = w_avail
+            draw_h = draw_w / aspect_img
+            draw_x = 0.0
+            draw_y = (h_avail - draw_h) / 2.0
+
+        return QRectF(draw_x, draw_y, draw_w, draw_h)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        drect = self._get_display_rect()
+
+        # Simply draw self.original_pixmap
+        if not self.original_pixmap.isNull():
+            painter.drawPixmap(drect.toRect(), self.original_pixmap)
+
+        # If a selection exists, use painter.setClipRect to draw self.effect_pixmap directly over it
+        sel = self.selection_rect
+        if sel is None and self.redact_rect is not None:
+            rx1, ry1, rx2, ry2 = self.redact_rect
+            scale = drect.width() / float(self._img_w)
+            bx1 = drect.x() + rx1 * scale
+            by1 = drect.y() + ry1 * scale
+            bw = (rx2 - rx1) * scale
+            bh = (ry2 - ry1) * scale
+            sel = QRectF(bx1, by1, max(1.0, bw), max(1.0, bh))
+
+        if sel and sel.width() > 1 and sel.height() > 1:
+            painter.save()
+            painter.setClipRect(sel)
+            if hasattr(self, "effect_pixmap") and not self.effect_pixmap.isNull():
+                painter.drawPixmap(drect.toRect(), self.effect_pixmap)
+            painter.restore()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            drect = self._get_display_rect()
+            pos = event.position()
+            clamped_x = max(drect.left(), min(drect.right(), pos.x()))
+            clamped_y = max(drect.top(), min(drect.bottom(), pos.y()))
+            self._start_point = QPointF(clamped_x, clamped_y)
+            self._current_point = self._start_point
+            self._is_dragging = True
+            self.selection_rect = None
+            self.redact_rect = None
+            self.update()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if self._is_dragging and (event.buttons() & Qt.MouseButton.LeftButton) and self._start_point:
+            drect = self._get_display_rect()
+            pos = event.position()
+            clamped_x = max(drect.left(), min(drect.right(), pos.x()))
+            clamped_y = max(drect.top(), min(drect.bottom(), pos.y()))
+            self._current_point = QPointF(clamped_x, clamped_y)
+
+            # Update the selection rectangle and call self.update() instantly
+            x1 = min(self._start_point.x(), self._current_point.x())
+            y1 = min(self._start_point.y(), self._current_point.y())
+            x2 = max(self._start_point.x(), self._current_point.x())
+            y2 = max(self._start_point.y(), self._current_point.y())
+            self.selection_rect = QRectF(x1, y1, max(0.0, x2 - x1), max(0.0, y2 - y1))
+            self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if self._is_dragging and event.button() == Qt.MouseButton.LeftButton and self._start_point:
+            self._is_dragging = False
+            drect = self._get_display_rect()
+            pos = event.position()
+            clamped_x = max(drect.left(), min(drect.right(), pos.x()))
+            clamped_y = max(drect.top(), min(drect.bottom(), pos.y()))
+            self._current_point = QPointF(clamped_x, clamped_y)
+
+            x1 = min(self._start_point.x(), self._current_point.x())
+            y1 = min(self._start_point.y(), self._current_point.y())
+            x2 = max(self._start_point.x(), self._current_point.x())
+            y2 = max(self._start_point.y(), self._current_point.y())
+
+            if (x2 - x1) > 3 and (y2 - y1) > 3:
+                self.selection_rect = QRectF(x1, y1, x2 - x1, y2 - y1)
+                scale = drect.width() / float(self._img_w)
+                ix1 = int(round((x1 - drect.left()) / scale))
+                iy1 = int(round((y1 - drect.top()) / scale))
+                ix2 = int(round((x2 - drect.left()) / scale))
+                iy2 = int(round((y2 - drect.top()) / scale))
+                self.redact_rect = (
+                    max(0, min(self._img_w - 1, ix1)),
+                    max(0, min(self._img_h - 1, iy1)),
+                    max(1, min(self._img_w, ix2)),
+                    max(1, min(self._img_h, iy2)),
+                )
+            else:
+                self.selection_rect = None
+                self.redact_rect = None
+
+            self._start_point = None
+            self._current_point = None
+            self.update()
+            self.selection_changed.emit()
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def clear_selection(self) -> None:
+        """Sets the current selection rectangle to None and calls update() immediately to revert to original image."""
+        self.selection_rect = None
+        self.redact_rect = None
+        self._start_point = None
+        self._current_point = None
+        self._is_dragging = False
+        self.update()
+        self.selection_changed.emit()
+
+    def reset_selection(self) -> None:
+        """Alias for clear_selection."""
+        self.clear_selection()
+
+
+class RedactDialog(QDialog):
+    """Frameless dark-themed dialog for selecting sensitive regions and applying blur/pixelate redactions."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+        self.effect_intensities = {"Blur": 15, "Pixelate": 15}
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(520, 560)
+
+        self._setup_ui()
+        self._center_on_screen()
+        self.generate_effect_pixmap()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("redactContainer")
+        container.setStyleSheet("""
+            #redactContainer {
+                background-color: #1a1a1e;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #e5e5ea;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+            QLabel:disabled {
+                color: rgba(255, 255, 255, 0.3);
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: rgba(255, 255, 255, 0.14);
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #ff5500;
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal:disabled {
+                background: rgba(255, 255, 255, 0.08);
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.2);
+                width: 16px;
+                height: 16px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 8px;
+            }
+            QSlider::handle:horizontal:disabled {
+                background: rgba(255, 255, 255, 0.2);
+                border: 1px solid rgba(255, 255, 255, 0.05);
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        # Header
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Redact Sensitive Data")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(255, 255, 255, 0.4);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        info_label = QLabel("Click and drag on the image to draw a redaction box:")
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        layout.addWidget(info_label)
+
+        # Canvas preview
+        self.canvas = RedactCanvasWidget(self.file_path, self)
+        layout.addWidget(self.canvas, stretch=1)
+
+        # Effect selection buttons
+        effect_layout = QHBoxLayout()
+        effect_layout.setSpacing(8)
+
+        eff_lbl = QLabel("Effect:")
+        eff_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #e5e5ea;")
+        effect_layout.addWidget(eff_lbl)
+
+        self.effect_group = QButtonGroup(self)
+        self.effect_group.setExclusive(True)
+
+        effects = ["Blur", "Pixelate", "Blackout"]
+        for eff in effects:
+            btn = QPushButton(eff)
+            btn.setCheckable(True)
+            if eff == "Blur":
+                btn.setChecked(True)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(255, 255, 255, 0.08);
+                    color: #cccccc;
+                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    border-radius: 6px;
+                    padding: 4px 10px;
+                    font-size: 12px;
+                    font-weight: 500;
+                }
+                QPushButton:hover {
+                    background-color: rgba(255, 255, 255, 0.14);
+                    color: #ffffff;
+                }
+                QPushButton:checked {
+                    background-color: #ff5500;
+                    color: #ffffff;
+                    font-weight: bold;
+                    border: 1px solid #ff5500;
+                }
+            """)
+            btn.toggled.connect(lambda checked, b=btn: self._on_effect_toggled(b, checked))
+            self.effect_group.addButton(btn)
+            effect_layout.addWidget(btn)
+
+        effect_layout.addStretch()
+        layout.addLayout(effect_layout)
+
+        # Intensity slider
+        slider_row = QHBoxLayout()
+        slider_row.setSpacing(8)
+        self.intensity_lbl = QLabel(f"Intensity: {self.effect_intensities['Blur']}px")
+        self.intensity_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.intensity_slider = QSlider(Qt.Orientation.Horizontal)
+        self.intensity_slider.setRange(5, 50)
+        self.intensity_slider.setValue(self.effect_intensities["Blur"])
+        self.intensity_slider.valueChanged.connect(self._on_slider_changed)
+        slider_row.addWidget(self.intensity_lbl)
+        slider_row.addWidget(self.intensity_slider)
+        layout.addLayout(slider_row)
+
+        # Bottom Bar: Reset on left, Cancel and Apply on right
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        reset_btn = QPushButton("Reset / Clear")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #e5e5ea;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+        """)
+        reset_btn.clicked.connect(self._on_reset)
+        bottom_layout.addWidget(reset_btn)
+
+        bottom_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #e5e5ea;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        bottom_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Redaction")
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        apply_btn.clicked.connect(self._on_apply)
+        bottom_layout.addWidget(apply_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    @property
+    def effect_pixmap(self) -> QPixmap:
+        if hasattr(self, "canvas") and hasattr(self.canvas, "effect_pixmap"):
+            return self.canvas.effect_pixmap
+        return QPixmap(self.file_path)
+
+    def _get_active_effect(self) -> str:
+        for b in self.effect_group.buttons():
+            if b.isChecked():
+                return b.text()
+        return "Blur"
+
+    def _on_effect_toggled(self, button, checked: bool) -> None:
+        if not checked:
+            return
+        effect = button.text()
+        if effect == "Blackout":
+            self.intensity_slider.setEnabled(False)
+            self.intensity_lbl.setEnabled(False)
+            self.intensity_lbl.setText("Intensity: N/A")
+            self.canvas.generate_effect_pixmap("Blackout", 0)
+        else:
+            self.intensity_slider.setEnabled(True)
+            self.intensity_lbl.setEnabled(True)
+            val = self.effect_intensities.get(effect, 15)
+            self.intensity_slider.blockSignals(True)
+            self.intensity_slider.setValue(val)
+            self.intensity_slider.blockSignals(False)
+            self.intensity_lbl.setText(f"Intensity: {val}px")
+            self.canvas.generate_effect_pixmap(effect, val)
+        self.update()
+
+    def _on_slider_changed(self, val: int) -> None:
+        effect = self._get_active_effect()
+        if effect in self.effect_intensities:
+            self.effect_intensities[effect] = val
+        self.intensity_lbl.setText(f"Intensity: {val}px")
+        self.canvas.generate_effect_pixmap(effect, val)
+        self.update()
+
+    def generate_effect_pixmap(self, *args) -> None:
+        """Regenerate effect pixmap using current active effect and its saved intensity."""
+        effect = self._get_active_effect()
+        if effect == "Blackout":
+            self.intensity_slider.setEnabled(False)
+            self.intensity_lbl.setEnabled(False)
+            self.intensity_lbl.setText("Intensity: N/A")
+            self.canvas.generate_effect_pixmap("Blackout", 0)
+        else:
+            self.intensity_slider.setEnabled(True)
+            self.intensity_lbl.setEnabled(True)
+            val = self.effect_intensities.get(effect, self.intensity_slider.value())
+            self.intensity_slider.blockSignals(True)
+            self.intensity_slider.setValue(val)
+            self.intensity_slider.blockSignals(False)
+            self.intensity_lbl.setText(f"Intensity: {val}px")
+            self.canvas.generate_effect_pixmap(effect, val)
+        self.update()
+
+    def _on_reset(self) -> None:
+        """Reset the redaction box to None and instantly revert live preview back to clean original image."""
+        if hasattr(self, "canvas") and self.canvas is not None:
+            self.canvas.clear_selection()
+
+    def _on_apply(self) -> None:
+        try:
+            dir_name = os.path.dirname(os.path.abspath(self.file_path))
+            base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+            output_path = os.path.join(dir_name, f"{base_name}_redacted{ext}")
+
+            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
+                output_path = os.path.join(dir_name, f"{base_name}_redacted_1{ext}")
+
+            effect = self._get_active_effect()
+            intensity = self.effect_intensities.get(effect, self.intensity_slider.value())
+
+            with Image.open(self.file_path) as img:
+                box = self.canvas.redact_rect
+                if box is None:
+                    print("[QuickDrop] No redaction box selected; keeping original clean image.")
+                    self.accept()
+                    return
+
+                x1, y1, x2, y2 = box
+                x1 = max(0, min(img.width - 1, x1))
+                y1 = max(0, min(img.height - 1, y1))
+                x2 = max(x1 + 1, min(img.width, x2))
+                y2 = max(y1 + 1, min(img.height, y2))
+
+                region = img.crop((x1, y1, x2, y2))
+                if effect == "Blur":
+                    redacted = region.filter(ImageFilter.GaussianBlur(radius=max(1, intensity)))
+                elif effect == "Pixelate":
+                    step = max(2, intensity)
+                    pw = max(1, region.width // step)
+                    ph = max(1, region.height // step)
+                    small = region.resize((pw, ph), Image.Resampling.NEAREST)
+                    redacted = small.resize((region.width, region.height), Image.Resampling.NEAREST)
+                else:  # Blackout
+                    redacted = Image.new(region.mode, region.size, (0, 0, 0))
+
+                img.paste(redacted, (x1, y1))
+
+                ext_lower = ext.lower()
+                if ext_lower in (".jpg", ".jpeg"):
+                    if img.mode not in ("RGB", "L"):
+                        img = img.convert("RGB")
+                    img.save(output_path, "JPEG", quality=95)
+                elif ext_lower == ".png":
+                    img.save(output_path, "PNG", optimize=True)
+                elif ext_lower == ".webp":
+                    img.save(output_path, "WEBP", quality=95)
+                else:
+                    fmt = img.format or "PNG"
+                    img.save(output_path, format=fmt)
+
+            print(f"[QuickDrop] Redacted '{self.file_path}' -> '{output_path}'")
+            self.accept()
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Redact error: {e}")
+            self.reject()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            child = self.childAt(event.position().toPoint())
+            if child is not None and (child is self.canvas or self.canvas.isAncestorOf(child)):
+                return
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -2638,7 +3678,11 @@ class QuickDropBridge(QObject):
     @QtCore.pyqtSlot(str)
     def trigger_action(self, action_name: str) -> None:
         print(f"DEBUG: trigger_action called with: {action_name}")
-        self.window._handle_action_click(action_name)
+        act_upper = action_name.strip().upper()
+        if act_upper in ("WATERMARK", "REDACT"):
+            self.window.open_file_dialog(act_upper)
+        else:
+            self.window._handle_action_click(action_name)
 
     @QtCore.pyqtSlot(str)
     def open_file_dialog(self, action_name: str) -> None:
@@ -2717,15 +3761,18 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
     # ── Modifier & Dynamic Menu Switching ──────────────────────────
 
-    def _sync_modifier(self, modifier_name: str) -> None:
+    def _sync_modifier(self, modifier_name: str, force: bool = False) -> None:
         """Inform WebEngine of the active modifier menu if it has changed."""
-        if self._current_modifier != modifier_name:
+        if self._current_modifier != modifier_name or force:
             self._current_modifier = modifier_name
-            self.page().runJavaScript(f"window.switchMenu('{modifier_name}');")
+            force_arg = "true" if force else "false"
+            self.page().runJavaScript(f"window.switchMenu('{modifier_name}', {force_arg});")
 
-    def _resolve_modifier(self, event, is_release: bool = False) -> str:
-        """Resolve the effective modifier name based on event modifiers and key."""
-        mods = event.modifiers()
+    def _resolve_modifier(self, event=None, is_release: bool = False) -> str:
+        """Resolve the effective modifier name based on event modifiers, app modifiers, and key."""
+        mods = QApplication.keyboardModifiers()
+        if event is not None and hasattr(event, "modifiers"):
+            mods |= event.modifiers()
         key = event.key() if hasattr(event, "key") else None
 
         if is_release:
@@ -2762,8 +3809,6 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def dragMoveEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
-            mod_name = self._resolve_modifier(event, is_release=False)
-            self._sync_modifier(mod_name)
             pos = event.position()
             self.page().runJavaScript(
                 f"window.updateHover({pos.x()}, {pos.y()});"
@@ -2773,7 +3818,6 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
     def dragLeaveEvent(self, event) -> None:  # noqa: N802
         self.page().runJavaScript("window.clearHover();")
-        self._sync_modifier("DEFAULT")
         event.accept()
 
     def process_dropped_files(self, action_name: str, file_paths: list[str]) -> None:
@@ -2784,7 +3828,6 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         for path in file_paths:
             print(f"ACTION: {action_name} | FILE: {path}")
         self.page().runJavaScript("window.clearHover();")
-        self._sync_modifier("DEFAULT")
 
         act_upper = action_name.strip().upper()
 
@@ -2882,6 +3925,26 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._start_ocr(file_paths)
         elif act_upper in ("DOCX", "TXT"):
             self._start_doc_conversion(file_paths, act_upper)
+        elif act_upper == "WATERMARK":
+            for path in file_paths:
+                dialog = WatermarkDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "REDACT":
+            for path in file_paths:
+                dialog = RedactDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
         elif (
             act_upper == "ADD BG"
             or act_upper in ConversionWorker.FORMAT_MAP
@@ -2906,11 +3969,17 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._execute_screenshot()
             return
 
+        file_filter = (
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
+            if act_upper in ("WATERMARK", "REDACT", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
+            else "All Files (*.*);;All Files (*)"
+        )
+
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             f"Select File for {action_name.strip()}",
             os.path.expanduser("~"),
-            "All Files (*.*);;All Files (*)",
+            file_filter,
         )
         if file_path:
             self.process_dropped_files(action_name, [file_path])
@@ -3263,6 +4332,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._execute_terminal()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
+        elif act in ("WATERMARK", "REDACT"):
+            self.open_file_dialog(act)
         else:
             self.open_file_dialog(action_name)
 
@@ -3439,7 +4510,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     def on_action(action: str | None) -> None:
                         if action:
                             act = action.strip().upper()
-                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN") or act.startswith("FLOAT"):
+                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT") or act.startswith("FLOAT"):
                                 self._handle_action_click(act)
                     self.page().runJavaScript("window.currentHoveredAction", on_action)
         elif event.type() == QEvent.Type.KeyPress:
@@ -3502,7 +4573,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             def on_action(action: str | None) -> None:
                 if action:
                     act = action.strip().upper()
-                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN") or act.startswith("FLOAT"):
+                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT") or act.startswith("FLOAT"):
                         self._handle_action_click(act)
             self.page().runJavaScript("window.currentHoveredAction", on_action)
 
@@ -3518,6 +4589,30 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self.close()
             return
 
+        if event.isAutoRepeat():
+            event.ignore()
+            return
+
+        # Space resets to Default main menu
+        if event.key() == Qt.Key.Key_Space:
+            self._sync_modifier("DEFAULT", force=True)
+            event.accept()
+            return
+
+        # Control toggles between CTRL and DEFAULT
+        if event.key() == Qt.Key.Key_Control:
+            new_mod = "DEFAULT" if self._current_modifier == "CTRL" else "CTRL"
+            self._sync_modifier(new_mod, force=True)
+            event.accept()
+            return
+
+        # Shift toggles between SHIFT and DEFAULT
+        if event.key() == Qt.Key.Key_Shift:
+            new_mod = "DEFAULT" if self._current_modifier == "SHIFT" else "SHIFT"
+            self._sync_modifier(new_mod, force=True)
+            event.accept()
+            return
+
         # Disable keyboard zoom shortcuts (Ctrl + / Ctrl - / Ctrl 0)
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             if event.key() in (
@@ -3529,13 +4624,10 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 event.ignore()
                 return
 
-        mod_name = self._resolve_modifier(event, is_release=False)
-        self._sync_modifier(mod_name)
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802
-        mod_name = self._resolve_modifier(event, is_release=True)
-        self._sync_modifier(mod_name)
+        # Toggles persist on release; do not reset to DEFAULT
         super().keyReleaseEvent(event)
 
 

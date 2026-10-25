@@ -558,6 +558,9 @@
 
     let currentModifier = 'DEFAULT';
     let currentHoverIndex = -1;
+    let isFileDragging = false;
+    let isCtrlPressed = false;
+    let isShiftPressed = false;
 
     /**
      * Resets the center circle text to idle state based on active modifier.
@@ -1035,41 +1038,88 @@
       window.clearHover();
     });
 
-    /**
-     * Evaluates modifier key state from keyboard event and updates petals accordingly.
-     * @param {KeyboardEvent} e
-     */
-    function syncKeyboardModifiers(e) {
-      if (e.shiftKey) {
-        if (currentModifier !== 'SHIFT') {
-          applyPetalsState(shiftState, 'SHIFT');
-        }
-      } else if (e.ctrlKey || e.metaKey || (e.type === 'keydown' && (e.key === 'Control' || e.key === 'Meta'))) {
-        if (currentModifier !== 'CTRL') {
+    // Global keyboard listeners: Control and Shift act as TOGGLES, Space resets to Default
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+
+      if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
+        e.preventDefault();
+        applyPetalsState(defaultState, 'DEFAULT');
+        return;
+      }
+
+      if (e.key === 'Control' || e.key === 'Meta') {
+        if (currentModifier === 'CTRL') {
+          applyPetalsState(defaultState, 'DEFAULT');
+        } else {
           applyPetalsState(ctrlCmdState, 'CTRL');
         }
-      } else {
-        if (currentModifier !== 'DEFAULT') {
+        return;
+      }
+
+      if (e.key === 'Shift') {
+        if (currentModifier === 'SHIFT') {
           applyPetalsState(defaultState, 'DEFAULT');
+        } else {
+          applyPetalsState(shiftState, 'SHIFT');
         }
+        return;
       }
-    }
-
-    // Global keyboard listeners for Shift, Control, and Meta (Cmd) keys
-    window.addEventListener('keydown', (e) => {
-      syncKeyboardModifiers(e);
     });
 
+    // Remove keyup resets for Ctrl/Shift (toggles stay active until toggled or Space pressed)
     window.addEventListener('keyup', (e) => {
-      syncKeyboardModifiers(e);
+      // Intentionally empty: no keyup resets for Ctrl or Shift
     });
 
-    // Reset to default on window blur to avoid stuck modifier
+    // Window blur listener: do NOT reset toggled modifier menus on blur
     window.addEventListener('blur', () => {
-      if (currentModifier !== 'DEFAULT') {
-        applyPetalsState(defaultState, 'DEFAULT');
-      }
+      // Toggle state persists across window blur and app focus transitions
     });
+
+    // ── Drag & Drop Event Listeners (OS file drag-over preserves toggled menus) ──
+    const handleDragEnter = (e) => {
+      e.preventDefault();
+      isFileDragging = true;
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+    };
+
+    const handleDragOver = (e) => {
+      e.preventDefault();
+      isFileDragging = true;
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      if (e.clientX !== undefined && e.clientY !== undefined) {
+        window.updateHover(e.clientX, e.clientY);
+      }
+    };
+
+    const handleDragLeave = (e) => {
+      e.preventDefault();
+      if (!e.relatedTarget || e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+        isFileDragging = false;
+        window.clearHover();
+      }
+    };
+
+    const handleDrop = (e) => {
+      e.preventDefault();
+      isFileDragging = false;
+      window.clearHover();
+    };
+
+    window.addEventListener('dragenter', handleDragEnter, false);
+    window.addEventListener('dragover', handleDragOver, false);
+    window.addEventListener('dragleave', handleDragLeave, false);
+    window.addEventListener('drop', handleDrop, false);
+
+    document.addEventListener('dragenter', handleDragEnter, false);
+    document.addEventListener('dragover', handleDragOver, false);
+    document.addEventListener('dragleave', handleDragLeave, false);
+    document.addEventListener('drop', handleDrop, false);
   </script>
 </body>
 </html>
