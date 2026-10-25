@@ -1,3 +1,5 @@
+import ast
+import operator as _py_op
 import os
 import shutil
 import subprocess
@@ -55,6 +57,8 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QFrame,
+    QGraphicsDropShadowEffect,
+    QGridLayout,
     QHBoxLayout,
     QLabel,
     QLineEdit,
@@ -1240,7 +1244,7 @@ class CropDialog(QDialog):
         container.setObjectName("cropContainer")
         container.setStyleSheet("""
             #cropContainer {
-                background-color: #f7f7f7;
+                background-color: #ffffff;
                 border: 1px solid rgba(0, 0, 0, 0.12);
                 border-radius: 16px;
             }
@@ -1249,6 +1253,12 @@ class CropDialog(QDialog):
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
         """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -2567,19 +2577,19 @@ class WatermarkDialog(QDialog):
         container.setObjectName("watermarkContainer")
         container.setStyleSheet("""
             #watermarkContainer {
-                background-color: #1a1a1e;
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
                 border-radius: 16px;
             }
             QLabel {
-                color: #e5e5ea;
+                color: #222222;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
             QLineEdit {
-                background-color: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.16);
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.16);
                 border-radius: 6px;
-                color: #ffffff;
+                color: #222222;
                 padding: 6px 10px;
                 font-size: 13px;
             }
@@ -2587,22 +2597,23 @@ class WatermarkDialog(QDialog):
                 border: 1px solid #ff5500;
             }
             QComboBox {
-                background-color: rgba(255, 255, 255, 0.08);
-                border: 1px solid rgba(255, 255, 255, 0.16);
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.16);
                 border-radius: 6px;
-                color: #ffffff;
+                color: #222222;
                 padding: 4px 8px;
                 font-size: 12px;
                 min-width: 120px;
             }
             QComboBox QAbstractItemView {
-                background-color: #242429;
-                color: #ffffff;
+                background-color: #ffffff;
+                color: #222222;
                 selection-background-color: #ff5500;
+                selection-color: #ffffff;
             }
             QSlider::groove:horizontal {
                 height: 6px;
-                background: rgba(255, 255, 255, 0.14);
+                background: rgba(0, 0, 0, 0.12);
                 border-radius: 3px;
             }
             QSlider::sub-page:horizontal {
@@ -2611,7 +2622,7 @@ class WatermarkDialog(QDialog):
             }
             QSlider::handle:horizontal {
                 background: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 0.2);
+                border: 1px solid rgba(0, 0, 0, 0.22);
                 width: 16px;
                 height: 16px;
                 margin-top: -5px;
@@ -2619,6 +2630,12 @@ class WatermarkDialog(QDialog):
                 border-radius: 8px;
             }
         """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -2630,7 +2647,7 @@ class WatermarkDialog(QDialog):
 
         title_label = QLabel("Watermark Image")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
         header_layout.addWidget(title_label)
 
         close_btn = QPushButton("✕")
@@ -2638,15 +2655,15 @@ class WatermarkDialog(QDialog):
         close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: rgba(255, 255, 255, 0.4);
+                color: rgba(0, 0, 0, 0.35);
                 font-size: 12px;
                 font-weight: bold;
                 border: none;
                 border-radius: 11px;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
             }
         """)
         close_btn.clicked.connect(self.reject)
@@ -2655,15 +2672,15 @@ class WatermarkDialog(QDialog):
 
         filename_label = QLabel(os.path.basename(self.file_path))
         filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        filename_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        filename_label.setStyleSheet("color: #666666; font-size: 11px; margin-top: -4px;")
         layout.addWidget(filename_label)
 
         # Preview area
         self.preview_frame = QFrame()
         self.preview_frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(0, 0, 0, 0.35);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background-color: #f5f5f7;
+                border: 1px solid rgba(0, 0, 0, 0.08);
                 border-radius: 10px;
             }
         """)
@@ -2680,7 +2697,7 @@ class WatermarkDialog(QDialog):
         text_row = QHBoxLayout()
         text_row.setSpacing(8)
         text_lbl = QLabel("Text:")
-        text_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px;")
+        text_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px; color: #222222;")
         self.text_input = QLineEdit("CONFIDENTIAL")
         self.text_input.textChanged.connect(self._update_preview)
         text_row.addWidget(text_lbl)
@@ -2691,7 +2708,7 @@ class WatermarkDialog(QDialog):
         pos_row = QHBoxLayout()
         pos_row.setSpacing(8)
         pos_lbl = QLabel("Position:")
-        pos_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px;")
+        pos_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 45px; color: #222222;")
         self.pos_combo = QComboBox()
         self.pos_combo.addItems(["Center", "Bottom Right", "Bottom Left", "Top Right", "Top Left", "Tiled / Diagonal"])
         self.pos_combo.currentIndexChanged.connect(self._update_preview)
@@ -2700,7 +2717,7 @@ class WatermarkDialog(QDialog):
 
         pos_row.addSpacing(10)
         color_lbl = QLabel("Color:")
-        color_lbl.setStyleSheet("font-size: 12px; font-weight: 600;")
+        color_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #222222;")
         self.color_combo = QComboBox()
         self.color_combo.addItems(["White", "Black"])
         self.color_combo.currentIndexChanged.connect(self._update_preview)
@@ -2712,7 +2729,7 @@ class WatermarkDialog(QDialog):
         op_row = QHBoxLayout()
         op_row.setSpacing(8)
         self.op_lbl = QLabel("Opacity: 45%")
-        self.op_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.op_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px; color: #222222;")
         self.op_slider = QSlider(Qt.Orientation.Horizontal)
         self.op_slider.setRange(5, 100)
         self.op_slider.setValue(45)
@@ -2725,7 +2742,7 @@ class WatermarkDialog(QDialog):
         size_row = QHBoxLayout()
         size_row.setSpacing(8)
         self.size_lbl = QLabel("Font Size: 36px")
-        self.size_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.size_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px; color: #222222;")
         self.size_slider = QSlider(Qt.Orientation.Horizontal)
         self.size_slider.setRange(14, 100)
         self.size_slider.setValue(36)
@@ -2742,8 +2759,8 @@ class WatermarkDialog(QDialog):
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #e5e5ea;
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 14px;
@@ -2751,8 +2768,8 @@ class WatermarkDialog(QDialog):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.14);
-                color: #ffffff;
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
             }
         """)
         cancel_btn.clicked.connect(self.reject)
@@ -3209,20 +3226,20 @@ class RedactDialog(QDialog):
         container.setObjectName("redactContainer")
         container.setStyleSheet("""
             #redactContainer {
-                background-color: #1a1a1e;
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
                 border-radius: 16px;
             }
             QLabel {
-                color: #e5e5ea;
+                color: #222222;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
             QLabel:disabled {
-                color: rgba(255, 255, 255, 0.3);
+                color: rgba(0, 0, 0, 0.3);
             }
             QSlider::groove:horizontal {
                 height: 6px;
-                background: rgba(255, 255, 255, 0.14);
+                background: rgba(0, 0, 0, 0.12);
                 border-radius: 3px;
             }
             QSlider::sub-page:horizontal {
@@ -3230,11 +3247,11 @@ class RedactDialog(QDialog):
                 border-radius: 3px;
             }
             QSlider::sub-page:horizontal:disabled {
-                background: rgba(255, 255, 255, 0.08);
+                background: rgba(0, 0, 0, 0.06);
             }
             QSlider::handle:horizontal {
                 background: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 0.2);
+                border: 1px solid rgba(0, 0, 0, 0.22);
                 width: 16px;
                 height: 16px;
                 margin-top: -5px;
@@ -3242,10 +3259,16 @@ class RedactDialog(QDialog):
                 border-radius: 8px;
             }
             QSlider::handle:horizontal:disabled {
-                background: rgba(255, 255, 255, 0.2);
-                border: 1px solid rgba(255, 255, 255, 0.05);
+                background: rgba(0, 0, 0, 0.15);
+                border: 1px solid rgba(0, 0, 0, 0.08);
             }
         """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -3257,7 +3280,7 @@ class RedactDialog(QDialog):
 
         title_label = QLabel("Redact Sensitive Data")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
         header_layout.addWidget(title_label)
 
         close_btn = QPushButton("✕")
@@ -3265,15 +3288,15 @@ class RedactDialog(QDialog):
         close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: rgba(255, 255, 255, 0.4);
+                color: rgba(0, 0, 0, 0.35);
                 font-size: 12px;
                 font-weight: bold;
                 border: none;
                 border-radius: 11px;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
             }
         """)
         close_btn.clicked.connect(self.reject)
@@ -3282,7 +3305,7 @@ class RedactDialog(QDialog):
 
         info_label = QLabel("Click and drag on the image to draw a redaction box:")
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        info_label.setStyleSheet("color: #666666; font-size: 11px; margin-top: -4px;")
         layout.addWidget(info_label)
 
         # Canvas preview
@@ -3294,7 +3317,7 @@ class RedactDialog(QDialog):
         effect_layout.setSpacing(8)
 
         eff_lbl = QLabel("Effect:")
-        eff_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #e5e5ea;")
+        eff_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #222222;")
         effect_layout.addWidget(eff_lbl)
 
         self.effect_group = QButtonGroup(self)
@@ -3308,17 +3331,17 @@ class RedactDialog(QDialog):
                 btn.setChecked(True)
             btn.setStyleSheet("""
                 QPushButton {
-                    background-color: rgba(255, 255, 255, 0.08);
-                    color: #cccccc;
-                    border: 1px solid rgba(255, 255, 255, 0.12);
+                    background-color: rgba(0, 0, 0, 0.05);
+                    color: #333333;
+                    border: 1px solid rgba(0, 0, 0, 0.08);
                     border-radius: 6px;
                     padding: 4px 10px;
                     font-size: 12px;
                     font-weight: 500;
                 }
                 QPushButton:hover {
-                    background-color: rgba(255, 255, 255, 0.14);
-                    color: #ffffff;
+                    background-color: rgba(0, 0, 0, 0.09);
+                    color: #111111;
                 }
                 QPushButton:checked {
                     background-color: #ff5500;
@@ -3338,7 +3361,7 @@ class RedactDialog(QDialog):
         slider_row = QHBoxLayout()
         slider_row.setSpacing(8)
         self.intensity_lbl = QLabel(f"Intensity: {self.effect_intensities['Blur']}px")
-        self.intensity_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px;")
+        self.intensity_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 90px; color: #222222;")
         self.intensity_slider = QSlider(Qt.Orientation.Horizontal)
         self.intensity_slider.setRange(5, 50)
         self.intensity_slider.setValue(self.effect_intensities["Blur"])
@@ -3354,8 +3377,8 @@ class RedactDialog(QDialog):
         reset_btn = QPushButton("Reset / Clear")
         reset_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #e5e5ea;
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 14px;
@@ -3363,8 +3386,8 @@ class RedactDialog(QDialog):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.14);
-                color: #ffffff;
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
             }
         """)
         reset_btn.clicked.connect(self._on_reset)
@@ -3375,8 +3398,8 @@ class RedactDialog(QDialog):
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #e5e5ea;
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 14px;
@@ -3384,8 +3407,8 @@ class RedactDialog(QDialog):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.14);
-                color: #ffffff;
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
             }
         """)
         cancel_btn.clicked.connect(self.reject)
@@ -3616,17 +3639,17 @@ class EditDialog(QDialog):
         container.setObjectName("editContainer")
         container.setStyleSheet("""
             #editContainer {
-                background-color: #1a1a1e;
-                border: 1px solid rgba(255, 255, 255, 0.12);
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
                 border-radius: 16px;
             }
             QLabel {
-                color: #e5e5ea;
+                color: #222222;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
             QSlider::groove:horizontal {
                 height: 6px;
-                background: rgba(255, 255, 255, 0.14);
+                background: rgba(0, 0, 0, 0.12);
                 border-radius: 3px;
             }
             QSlider::sub-page:horizontal {
@@ -3635,7 +3658,7 @@ class EditDialog(QDialog):
             }
             QSlider::handle:horizontal {
                 background: #ffffff;
-                border: 1px solid rgba(0, 0, 0, 0.2);
+                border: 1px solid rgba(0, 0, 0, 0.22);
                 width: 16px;
                 height: 16px;
                 margin-top: -5px;
@@ -3643,6 +3666,12 @@ class EditDialog(QDialog):
                 border-radius: 8px;
             }
         """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
 
         layout = QVBoxLayout(container)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -3654,7 +3683,7 @@ class EditDialog(QDialog):
 
         title_label = QLabel("Edit Image")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
         header_layout.addWidget(title_label)
 
         close_btn = QPushButton("✕")
@@ -3662,15 +3691,15 @@ class EditDialog(QDialog):
         close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: rgba(255, 255, 255, 0.4);
+                color: rgba(0, 0, 0, 0.35);
                 font-size: 12px;
                 font-weight: bold;
                 border: none;
                 border-radius: 11px;
             }
             QPushButton:hover {
-                background: rgba(255, 255, 255, 0.1);
-                color: #ffffff;
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
             }
         """)
         close_btn.clicked.connect(self.reject)
@@ -3679,15 +3708,15 @@ class EditDialog(QDialog):
 
         filename_label = QLabel(os.path.basename(self.file_path))
         filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        filename_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        filename_label.setStyleSheet("color: #666666; font-size: 11px; margin-top: -4px;")
         layout.addWidget(filename_label)
 
         # Preview area
         preview_frame = QFrame()
         preview_frame.setStyleSheet("""
             QFrame {
-                background-color: rgba(0, 0, 0, 0.35);
-                border: 1px solid rgba(255, 255, 255, 0.08);
+                background-color: #f5f5f7;
+                border: 1px solid rgba(0, 0, 0, 0.08);
                 border-radius: 10px;
             }
         """)
@@ -3707,7 +3736,7 @@ class EditDialog(QDialog):
         # 1. Brightness
         b_row = QHBoxLayout()
         self.bright_lbl = QLabel("Brightness: 100%")
-        self.bright_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.bright_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px; color: #222222;")
         self.bright_slider = QSlider(Qt.Orientation.Horizontal)
         self.bright_slider.setRange(0, 200)
         self.bright_slider.setValue(100)
@@ -3719,7 +3748,7 @@ class EditDialog(QDialog):
         # 2. Contrast
         c_row = QHBoxLayout()
         self.contrast_lbl = QLabel("Contrast: 100%")
-        self.contrast_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.contrast_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px; color: #222222;")
         self.contrast_slider = QSlider(Qt.Orientation.Horizontal)
         self.contrast_slider.setRange(0, 200)
         self.contrast_slider.setValue(100)
@@ -3731,7 +3760,7 @@ class EditDialog(QDialog):
         # 3. Saturation
         s_row = QHBoxLayout()
         self.sat_lbl = QLabel("Saturation: 100%")
-        self.sat_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.sat_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px; color: #222222;")
         self.sat_slider = QSlider(Qt.Orientation.Horizontal)
         self.sat_slider.setRange(0, 200)
         self.sat_slider.setValue(100)
@@ -3749,8 +3778,8 @@ class EditDialog(QDialog):
         reset_btn = QPushButton("Reset")
         reset_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #e5e5ea;
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 14px;
@@ -3758,8 +3787,8 @@ class EditDialog(QDialog):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.14);
-                color: #ffffff;
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
             }
         """)
         reset_btn.clicked.connect(self._on_reset)
@@ -3770,8 +3799,8 @@ class EditDialog(QDialog):
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setStyleSheet("""
             QPushButton {
-                background-color: rgba(255, 255, 255, 0.08);
-                color: #e5e5ea;
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
                 border: none;
                 border-radius: 6px;
                 padding: 6px 14px;
@@ -3779,8 +3808,8 @@ class EditDialog(QDialog):
                 font-size: 13px;
             }
             QPushButton:hover {
-                background-color: rgba(255, 255, 255, 0.14);
-                color: #ffffff;
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
             }
         """)
         cancel_btn.clicked.connect(self.reject)
@@ -3930,6 +3959,1039 @@ class EditDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class AnnotateCanvasWidget(QWidget):
+    """Interactive canvas allowing freehand drawing of red marker annotations directly onto the image."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self.original_pixmap = QPixmap(file_path)
+        self._img_w = max(1, self.original_pixmap.width() if not self.original_pixmap.isNull() else 100)
+        self._img_h = max(1, self.original_pixmap.height() if not self.original_pixmap.isNull() else 100)
+
+        self.drawing_layer = QPixmap(self._img_w, self._img_h)
+        self.drawing_layer.fill(Qt.GlobalColor.transparent)
+
+        self._last_point: QPointF | None = None
+        self.setMinimumSize(360, 240)
+        self.setMouseTracking(True)
+        self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def _get_display_rect(self) -> QRectF:
+        w_avail = float(self.width())
+        h_avail = float(self.height())
+        aspect_widget = w_avail / max(1.0, h_avail)
+        aspect_img = float(self._img_w) / float(self._img_h)
+
+        if aspect_img > aspect_widget:
+            draw_w = w_avail
+            draw_h = draw_w / aspect_img
+            draw_x = 0.0
+            draw_y = (h_avail - draw_h) / 2.0
+        else:
+            draw_h = h_avail
+            draw_w = draw_h * aspect_img
+            draw_x = (w_avail - draw_w) / 2.0
+            draw_y = 0.0
+
+        return QRectF(draw_x, draw_y, draw_w, draw_h)
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        drect = self._get_display_rect()
+
+        # Subtle card backdrop for transparent images
+        painter.fillRect(drect.toRect(), QColor(245, 245, 247))
+
+        if not self.original_pixmap.isNull():
+            painter.drawPixmap(drect.toRect(), self.original_pixmap)
+
+        if not self.drawing_layer.isNull():
+            painter.drawPixmap(drect.toRect(), self.drawing_layer)
+
+    def _widget_to_image_coords(self, pos: QPointF) -> QPointF | None:
+        drect = self._get_display_rect()
+        if drect.width() <= 0 or drect.height() <= 0:
+            return None
+        scale_x = float(self._img_w) / drect.width()
+        scale_y = float(self._img_h) / drect.height()
+        ix = (pos.x() - drect.x()) * scale_x
+        iy = (pos.y() - drect.y()) * scale_y
+        ix = max(0.0, min(float(self._img_w), ix))
+        iy = max(0.0, min(float(self._img_h), iy))
+        return QPointF(ix, iy)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            img_pt = self._widget_to_image_coords(event.position())
+            if img_pt:
+                self._last_point = img_pt
+                drect = self._get_display_rect()
+                scale = float(self._img_w) / max(1.0, drect.width())
+                pen_width = max(3.0, 4.0 * scale)
+
+                painter = QPainter(self.drawing_layer)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                pen = QPen(
+                    QColor(255, 59, 48),
+                    pen_width,
+                    Qt.PenStyle.SolidLine,
+                    Qt.PenCapStyle.RoundCap,
+                    Qt.PenJoinStyle.RoundJoin,
+                )
+                painter.setPen(pen)
+                painter.drawPoint(img_pt)
+                painter.end()
+                self.update()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (event.buttons() & Qt.MouseButton.LeftButton) and self._last_point is not None:
+            img_pt = self._widget_to_image_coords(event.position())
+            if img_pt:
+                drect = self._get_display_rect()
+                scale = float(self._img_w) / max(1.0, drect.width())
+                pen_width = max(3.0, 4.0 * scale)
+
+                painter = QPainter(self.drawing_layer)
+                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                pen = QPen(
+                    QColor(255, 59, 48),
+                    pen_width,
+                    Qt.PenStyle.SolidLine,
+                    Qt.PenCapStyle.RoundCap,
+                    Qt.PenJoinStyle.RoundJoin,
+                )
+                painter.setPen(pen)
+                painter.drawLine(self._last_point, img_pt)
+                painter.end()
+                self._last_point = img_pt
+                self.update()
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._last_point = None
+            event.accept()
+            return
+        super().mouseReleaseEvent(event)
+
+    def clear(self) -> None:
+        self.drawing_layer.fill(Qt.GlobalColor.transparent)
+        self.update()
+
+
+class AnnotateDialog(QDialog):
+    """Frameless light-themed dialog for freehand marker annotations on images."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(520, 540)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("annotateContainer")
+        container.setStyleSheet("""
+            #annotateContainer {
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        # Header: Centered title with subtle close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Annotate Image")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        info_label = QLabel("Click and drag on the image to draw freehand marker annotations:")
+        info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        info_label.setStyleSheet("color: #666666; font-size: 11px; margin-top: -4px;")
+        layout.addWidget(info_label)
+
+        # Canvas
+        self.canvas = AnnotateCanvasWidget(self.file_path, self)
+        layout.addWidget(self.canvas, stretch=1)
+
+        # Bottom Bar
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        reset_btn = QPushButton("Reset / Clear")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+        """)
+        reset_btn.clicked.connect(self.canvas.clear)
+        bottom_layout.addWidget(reset_btn)
+
+        bottom_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        bottom_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Annotations")
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        apply_btn.clicked.connect(self._on_apply)
+        bottom_layout.addWidget(apply_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def _on_apply(self) -> None:
+        try:
+            dir_name = os.path.dirname(os.path.abspath(self.file_path))
+            base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+            output_path = os.path.join(dir_name, f"{base_name}_annotated{ext}")
+
+            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
+                output_path = os.path.join(dir_name, f"{base_name}_annotated_1{ext}")
+
+            full_pixmap = QPixmap(self.file_path)
+            painter = QPainter(full_pixmap)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.drawPixmap(0, 0, self.canvas.drawing_layer)
+            painter.end()
+
+            ext_lower = ext.lower()
+            if ext_lower in (".jpg", ".jpeg"):
+                full_pixmap.save(output_path, "JPEG", 95)
+            elif ext_lower == ".png":
+                full_pixmap.save(output_path, "PNG")
+            elif ext_lower == ".webp":
+                full_pixmap.save(output_path, "WEBP", 95)
+            else:
+                full_pixmap.save(output_path)
+
+            print(f"[QuickDrop] Annotated '{self.file_path}' -> '{output_path}'")
+            self.accept()
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Annotate error: {e}")
+            self.reject()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            child = self.childAt(event.position().toPoint())
+            if child is not None and (child is self.canvas or self.canvas.isAncestorOf(child)):
+                return
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+
+_CALC_OPERATORS = {
+    ast.Add: _py_op.add,
+    ast.Sub: _py_op.sub,
+    ast.Mult: _py_op.mul,
+    ast.Div: _py_op.truediv,
+    ast.USub: _py_op.neg,
+    ast.UAdd: _py_op.pos,
+}
+
+
+def _eval_arithmetic_ast(node):
+    if isinstance(node, ast.Constant):
+        if isinstance(node.value, (int, float)):
+            return node.value
+        raise ValueError("Non-numeric constant")
+    elif isinstance(node, ast.BinOp):
+        left = _eval_arithmetic_ast(node.left)
+        right = _eval_arithmetic_ast(node.right)
+        op_type = type(node.op)
+        if op_type in _CALC_OPERATORS:
+            return _CALC_OPERATORS[op_type](left, right)
+        raise ValueError("Unsupported operation")
+    elif isinstance(node, ast.UnaryOp):
+        operand = _eval_arithmetic_ast(node.operand)
+        op_type = type(node.op)
+        if op_type in _CALC_OPERATORS:
+            return _CALC_OPERATORS[op_type](operand)
+        raise ValueError("Unsupported unary operator")
+    raise ValueError("Invalid expression element")
+
+
+def _safe_calc_eval(expr_str: str) -> float:
+    cleaned = expr_str.strip().replace("×", "*").replace("÷", "/")
+    if not cleaned:
+        return 0.0
+    parsed = ast.parse(cleaned, mode="eval")
+    return _eval_arithmetic_ast(parsed.body)
+
+
+class CalcDialog(QDialog):
+    """Frameless modern light-themed mini calculator dialog with keyboard and button support."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._drag_start_pos = None
+
+        self._expression = "0"
+        self._reset_input = False
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(300, 420)
+
+        self._setup_ui()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("calcContainer")
+        container.setStyleSheet("""
+            #calcContainer {
+                background-color: #FFFFFF;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #111827;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        # Header: Centered title with subtle close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Calculator")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #111827;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #111827;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # Display screen
+        self.display_label = QLabel("0")
+        self.display_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.display_label.setStyleSheet("""
+            QLabel {
+                background-color: #F3F4F6;
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 10px;
+                color: #111827;
+                font-size: 28px;
+                font-weight: bold;
+                padding: 10px 14px;
+            }
+        """)
+        self.display_label.setFixedHeight(54)
+        layout.addWidget(self.display_label)
+
+        # Grid: 5 rows x 4 columns
+        grid = QGridLayout()
+        grid.setSpacing(8)
+
+        num_style = """
+            QPushButton {
+                background-color: #F3F4F6;
+                color: #111827;
+                border: none;
+                border-radius: 10px;
+                font-size: 16px;
+                font-weight: 600;
+                min-height: 44px;
+            }
+            QPushButton:hover {
+                background-color: #E5E7EB;
+            }
+            QPushButton:pressed {
+                background-color: #D1D5DB;
+            }
+        """
+
+        op_style = """
+            QPushButton {
+                background-color: #ff5500;
+                color: #ffffff;
+                border: none;
+                border-radius: 10px;
+                font-size: 18px;
+                font-weight: bold;
+                min-height: 44px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """
+
+        # Row 1: C, (, ), /
+        btn_c = QPushButton("C")
+        btn_c.setStyleSheet(op_style)
+        btn_c.clicked.connect(self._on_clear)
+        grid.addWidget(btn_c, 0, 0)
+
+        btn_lpar = QPushButton("(")
+        btn_lpar.setStyleSheet(num_style)
+        btn_lpar.clicked.connect(lambda: self._on_input("("))
+        grid.addWidget(btn_lpar, 0, 1)
+
+        btn_rpar = QPushButton(")")
+        btn_rpar.setStyleSheet(num_style)
+        btn_rpar.clicked.connect(lambda: self._on_input(")"))
+        grid.addWidget(btn_rpar, 0, 2)
+
+        btn_div = QPushButton("/")
+        btn_div.setStyleSheet(op_style)
+        btn_div.clicked.connect(lambda: self._on_operator("/"))
+        grid.addWidget(btn_div, 0, 3)
+
+        # Row 2: 7, 8, 9, *
+        for c, text in enumerate(["7", "8", "9"]):
+            btn = QPushButton(text)
+            btn.setStyleSheet(num_style)
+            btn.clicked.connect(lambda _, t=text: self._on_input(t))
+            grid.addWidget(btn, 1, c)
+
+        btn_mul = QPushButton("*")
+        btn_mul.setStyleSheet(op_style)
+        btn_mul.clicked.connect(lambda: self._on_operator("*"))
+        grid.addWidget(btn_mul, 1, 3)
+
+        # Row 3: 4, 5, 6, -
+        for c, text in enumerate(["4", "5", "6"]):
+            btn = QPushButton(text)
+            btn.setStyleSheet(num_style)
+            btn.clicked.connect(lambda _, t=text: self._on_input(t))
+            grid.addWidget(btn, 2, c)
+
+        btn_sub = QPushButton("-")
+        btn_sub.setStyleSheet(op_style)
+        btn_sub.clicked.connect(lambda: self._on_operator("-"))
+        grid.addWidget(btn_sub, 2, 3)
+
+        # Row 4: 1, 2, 3, +
+        for c, text in enumerate(["1", "2", "3"]):
+            btn = QPushButton(text)
+            btn.setStyleSheet(num_style)
+            btn.clicked.connect(lambda _, t=text: self._on_input(t))
+            grid.addWidget(btn, 3, c)
+
+        btn_add = QPushButton("+")
+        btn_add.setStyleSheet(op_style)
+        btn_add.clicked.connect(lambda: self._on_operator("+"))
+        grid.addWidget(btn_add, 3, 3)
+
+        # Row 5: 0 (span 2 cols), ., =
+        btn_0 = QPushButton("0")
+        btn_0.setStyleSheet(num_style)
+        btn_0.clicked.connect(lambda: self._on_input("0"))
+        grid.addWidget(btn_0, 4, 0, 1, 2)
+
+        btn_dot = QPushButton(".")
+        btn_dot.setStyleSheet(num_style)
+        btn_dot.clicked.connect(lambda: self._on_input("."))
+        grid.addWidget(btn_dot, 4, 2)
+
+        btn_eq = QPushButton("=")
+        btn_eq.setStyleSheet(op_style)
+        btn_eq.clicked.connect(self._on_equals)
+        grid.addWidget(btn_eq, 4, 3)
+
+        layout.addLayout(grid)
+        outer_layout.addWidget(container)
+
+    def _update_display(self, text: str) -> None:
+        if len(text) > 16:
+            text = text[-16:]
+        self.display_label.setText(text)
+
+    def _on_input(self, char: str) -> None:
+        if self._reset_input:
+            if char in "0123456789.()":
+                self._expression = ""
+            self._reset_input = False
+
+        if self._expression in ("0", "Error") and char != ".":
+            self._expression = char
+        else:
+            self._expression += char
+
+        self._update_display(self._expression)
+
+    def _on_operator(self, op: str) -> None:
+        if self._reset_input:
+            if self._expression == "Error":
+                self._expression = "0"
+            self._reset_input = False
+
+        if self._expression and self._expression[-1] in "+-*/":
+            self._expression = self._expression[:-1] + op
+        else:
+            self._expression += op
+
+        self._update_display(self._expression)
+
+    def _on_clear(self) -> None:
+        self._expression = "0"
+        self._reset_input = False
+        self._update_display("0")
+
+    def _on_backspace(self) -> None:
+        if self._reset_input or self._expression in ("Error", "0") or len(self._expression) <= 1:
+            self._expression = "0"
+            self._reset_input = False
+        else:
+            self._expression = self._expression[:-1]
+        self._update_display(self._expression)
+
+    def _on_equals(self) -> None:
+        if not self._expression or self._expression == "Error":
+            return
+        try:
+            val = _safe_calc_eval(self._expression)
+            if abs(val - round(val)) < 1e-10:
+                result_str = str(int(round(val)))
+            else:
+                result_str = f"{val:.8g}"
+            self._expression = result_str
+            self._reset_input = True
+            self._update_display(self._expression)
+        except ZeroDivisionError:
+            self._expression = "Error"
+            self._reset_input = True
+            self._update_display("Error")
+        except Exception:
+            self._expression = "Error"
+            self._reset_input = True
+            self._update_display("Error")
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        key = event.key()
+        text = event.text()
+        if key in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        elif text in "0123456789.()":
+            self._on_input(text)
+        elif text in ("+", "-", "*", "/"):
+            self._on_operator(text)
+        elif key in (Qt.Key.Key_Return, Qt.Key.Key_Enter) or text == "=":
+            self._on_equals()
+        elif key == Qt.Key.Key_Backspace:
+            self._on_backspace()
+        elif text in ("c", "C"):
+            self._on_clear()
+        else:
+            super().keyPressEvent(event)
+
+
+class TimerDialog(QDialog):
+    """Frameless light-themed countdown timer dialog with customizable minutes/seconds and audio-visual alert."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._drag_start_pos = None
+
+        self._total_seconds = 300
+        self._remaining_seconds = 300
+        self._is_running = False
+
+        self._timer = QTimer(self)
+        self._timer.setInterval(1000)
+        self._timer.timeout.connect(self._on_tick)
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(320, 360)
+
+        self._setup_ui()
+        self._center_on_screen()
+        self._update_display()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("timerContainer")
+        container.setStyleSheet("""
+            #timerContainer {
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(12)
+
+        # Header: Centered title with subtle close button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Timer")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # Large Digital Countdown Display
+        self.time_display = QLabel("05:00")
+        self.time_display.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.time_display.setStyleSheet("""
+            QLabel {
+                background-color: #f5f5f7;
+                border: 1px solid rgba(0, 0, 0, 0.08);
+                border-radius: 12px;
+                color: #1c1c1e;
+                font-size: 44px;
+                font-weight: bold;
+                padding: 12px 10px;
+                letter-spacing: 2px;
+            }
+        """)
+        layout.addWidget(self.time_display)
+
+        # Inputs: Minutes & Seconds spinboxes
+        input_row = QHBoxLayout()
+        input_row.setSpacing(8)
+
+        m_lbl = QLabel("Minutes:")
+        m_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #222222;")
+        self.m_input = QSpinBox()
+        self.m_input.setRange(0, 999)
+        self.m_input.setValue(5)
+        self.m_input.setStyleSheet("""
+            QSpinBox {
+                background-color: #ffffff;
+                color: #222222;
+                border: 1px solid rgba(0, 0, 0, 0.16);
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                font-weight: 600;
+                min-width: 55px;
+            }
+        """)
+        self.m_input.valueChanged.connect(self._on_input_changed)
+
+        s_lbl = QLabel("Seconds:")
+        s_lbl.setStyleSheet("font-size: 12px; font-weight: 600; color: #222222;")
+        self.s_input = QSpinBox()
+        self.s_input.setRange(0, 59)
+        self.s_input.setValue(0)
+        self.s_input.setStyleSheet("""
+            QSpinBox {
+                background-color: #ffffff;
+                color: #222222;
+                border: 1px solid rgba(0, 0, 0, 0.16);
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 13px;
+                font-weight: 600;
+                min-width: 55px;
+            }
+        """)
+        self.s_input.valueChanged.connect(self._on_input_changed)
+
+        input_row.addWidget(m_lbl)
+        input_row.addWidget(self.m_input)
+        input_row.addSpacing(10)
+        input_row.addWidget(s_lbl)
+        input_row.addWidget(self.s_input)
+        layout.addLayout(input_row)
+
+        # Quick preset chips
+        preset_row = QHBoxLayout()
+        preset_row.setSpacing(6)
+        presets = [("1m", 1), ("5m", 5), ("10m", 10), ("25m", 25)]
+        for label, mins in presets:
+            btn = QPushButton(label)
+            btn.setStyleSheet("""
+                QPushButton {
+                    background-color: rgba(0, 0, 0, 0.05);
+                    color: #333333;
+                    border: 1px solid rgba(0, 0, 0, 0.08);
+                    border-radius: 6px;
+                    padding: 4px 8px;
+                    font-size: 11px;
+                    font-weight: 600;
+                }
+                QPushButton:hover {
+                    background-color: rgba(0, 0, 0, 0.09);
+                    color: #111111;
+                }
+            """)
+            btn.clicked.connect(lambda _, m=mins: self._set_preset(m))
+            preset_row.addWidget(btn)
+        layout.addLayout(preset_row)
+
+        # Bottom Buttons: Reset on left, Start/Pause on right
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        self.reset_btn = QPushButton("Reset")
+        self.reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 18px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+        """)
+        self.reset_btn.clicked.connect(self._on_reset)
+        btn_layout.addWidget(self.reset_btn)
+
+        btn_layout.addStretch()
+
+        self.toggle_btn = QPushButton("Start")
+        self.toggle_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                padding: 8px 22px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        self.toggle_btn.clicked.connect(self._toggle_timer)
+        btn_layout.addWidget(self.toggle_btn)
+
+        layout.addLayout(btn_layout)
+        outer_layout.addWidget(container)
+
+    def _set_preset(self, minutes: int) -> None:
+        self._timer.stop()
+        self._is_running = False
+        self.toggle_btn.setText("Start")
+        self.m_input.setValue(minutes)
+        self.s_input.setValue(0)
+        self._total_seconds = minutes * 60
+        self._remaining_seconds = self._total_seconds
+        self._update_display()
+
+    def _on_input_changed(self) -> None:
+        if not self._is_running:
+            self._total_seconds = self.m_input.value() * 60 + self.s_input.value()
+            self._remaining_seconds = self._total_seconds
+            self._update_display()
+
+    def _update_display(self) -> None:
+        mins = self._remaining_seconds // 60
+        secs = self._remaining_seconds % 60
+        self.time_display.setText(f"{mins:02d}:{secs:02d}")
+
+    def _toggle_timer(self) -> None:
+        if self._is_running:
+            self._timer.stop()
+            self._is_running = False
+            self.toggle_btn.setText("Resume")
+        else:
+            if self._remaining_seconds <= 0:
+                self._remaining_seconds = self.m_input.value() * 60 + self.s_input.value()
+            if self._remaining_seconds > 0:
+                self._timer.start()
+                self._is_running = True
+                self.toggle_btn.setText("Pause")
+
+    def _on_tick(self) -> None:
+        if self._remaining_seconds > 0:
+            self._remaining_seconds -= 1
+            self._update_display()
+
+        if self._remaining_seconds <= 0:
+            self._timer.stop()
+            self._is_running = False
+            self.toggle_btn.setText("Start")
+            self.time_display.setText("00:00")
+            QApplication.beep()
+
+    def _on_reset(self) -> None:
+        self._timer.stop()
+        self._is_running = False
+        self.toggle_btn.setText("Start")
+        self._remaining_seconds = self.m_input.value() * 60 + self.s_input.value()
+        self._update_display()
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        elif event.key() == Qt.Key.Key_Space:
+            self._toggle_timer()
+        else:
+            super().keyPressEvent(event)
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -3990,6 +5052,7 @@ class QuickDropBridge(QObject):
     def __init__(self, main_window: "TransparentWebDropZone") -> None:
         super().__init__()
         self.window = main_window
+        self._last_trigger_time = 0.0
 
     @QtCore.pyqtSlot(bool)
     def toggle_float_on_top(self, enable: bool):
@@ -4029,15 +5092,25 @@ class QuickDropBridge(QObject):
 
     @QtCore.pyqtSlot(str)
     def trigger_action(self, action_name: str) -> None:
+        now = time.time()
+        if now - getattr(self, "_last_trigger_time", 0.0) < 0.35:
+            return
+        self._last_trigger_time = now
+
         print(f"DEBUG: trigger_action called with: {action_name}")
         act_upper = action_name.strip().upper()
-        if act_upper in ("WATERMARK", "REDACT", "EDIT"):
+        if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
             self.window.open_file_dialog(act_upper)
         else:
             self.window._handle_action_click(action_name)
 
     @QtCore.pyqtSlot(str)
     def open_file_dialog(self, action_name: str) -> None:
+        now = time.time()
+        if now - getattr(self, "_last_trigger_time", 0.0) < 0.35:
+            return
+        self._last_trigger_time = now
+
         print(f"DEBUG: open_file_dialog called with: {action_name}")
         self.window.open_file_dialog(action_name)
 
@@ -4307,6 +5380,20 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     if d in self._dialogs
                     else None
                 )
+        elif act_upper == "ANNOTATE":
+            for path in file_paths:
+                dialog = AnnotateDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
+        elif act_upper == "CALC":
+            self._open_calc()
+        elif act_upper == "TIMER":
+            self._open_timer()
         elif (
             act_upper == "ADD BG"
             or act_upper in ConversionWorker.FORMAT_MAP
@@ -4330,10 +5417,16 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         if act_upper == "SCREENSHOT":
             self._execute_screenshot()
             return
+        if act_upper == "CALC":
+            self._open_calc()
+            return
+        if act_upper == "TIMER":
+            self._open_timer()
+            return
 
         file_filter = (
             "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
-            if act_upper in ("WATERMARK", "REDACT", "EDIT", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
+            if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
             else "All Files (*.*);;All Files (*)"
         )
 
@@ -4682,7 +5775,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def _handle_action_click(self, action_name: str, target_state: bool | None = None) -> None:
         """Execute click-triggered actions without requiring file drop."""
         now = time.time()
-        if now - getattr(self, "_last_click_time", 0) < 0.2:
+        if now - getattr(self, "_last_click_time", 0.0) < 0.35:
             return
         self._last_click_time = now
         act = action_name.strip().upper()
@@ -4692,9 +5785,13 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._execute_screenshot()
         elif act == "TERMINAL":
             self._execute_terminal()
+        elif act == "CALC":
+            self._open_calc()
+        elif act == "TIMER":
+            self._open_timer()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
-        elif act in ("WATERMARK", "REDACT", "EDIT"):
+        elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
             self.open_file_dialog(act)
         else:
             self.open_file_dialog(action_name)
@@ -4791,6 +5888,28 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             else:
                 subprocess.Popen(f'x-terminal-emulator -e "bash -c \\"{bash_cmd}\\""', shell=True)
 
+    def _open_calc(self) -> None:
+        """Open the standalone mini-calculator dialog."""
+        dialog = CalcDialog(self)
+        dialog.show()
+        self._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self._dialogs.remove(d)
+            if d in self._dialogs
+            else None
+        )
+
+    def _open_timer(self) -> None:
+        """Open the standalone countdown timer dialog."""
+        dialog = TimerDialog(self)
+        dialog.show()
+        self._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self._dialogs.remove(d)
+            if d in self._dialogs
+            else None
+        )
+
     # ── Desktop Interactivity & Mouse Hover Tracking ───────────────
 
     def _install_event_filters(self) -> None:
@@ -4865,16 +5984,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     self.window().move(event.globalPosition().toPoint() - self._drag_start_pos)
         elif event.type() == QEvent.Type.MouseButtonRelease:
             if event.button() == Qt.MouseButton.LeftButton:
-                was_dragging = getattr(self, "_is_dragging_window", False)
                 self._drag_start_pos = None
                 self._is_dragging_window = False
-                if not was_dragging:
-                    def on_action(action: str | None) -> None:
-                        if action:
-                            act = action.strip().upper()
-                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT", "EDIT") or act.startswith("FLOAT"):
-                                self._handle_action_click(act)
-                    self.page().runJavaScript("window.currentHoveredAction", on_action)
         elif event.type() == QEvent.Type.KeyPress:
             if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
                 if event.key() in (
@@ -4927,17 +6038,9 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        was_dragging = getattr(self, "_is_dragging_window", False)
         self._drag_start_pos = None
         self._is_dragging_window = False
         super().mouseReleaseEvent(event)
-        if not was_dragging and event.button() == Qt.MouseButton.LeftButton:
-            def on_action(action: str | None) -> None:
-                if action:
-                    act = action.strip().upper()
-                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT", "EDIT") or act.startswith("FLOAT"):
-                        self._handle_action_click(act)
-            self.page().runJavaScript("window.currentHoveredAction", on_action)
 
     def leaveEvent(self, event) -> None:  # noqa: N802
         if not getattr(self, "_is_processing", False):

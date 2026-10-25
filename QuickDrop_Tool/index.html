@@ -871,12 +871,18 @@
       initWebChannel();
     }
 
+    let lastActionDispatchTime = 0;
+
     /**
      * Dispatches action execution to Python backend on click without requiring file drop.
      * @param {string} action
      */
     function triggerActionIfApplicable(action) {
       if (!action) return;
+      const now = Date.now();
+      if (now - lastActionDispatchTime < 350) return;
+      lastActionDispatchTime = now;
+
       const act = action.trim().toUpperCase();
 
       if (act === 'CLOSE' || act === 'QUIT' || act === 'EXIT') {
@@ -991,32 +997,12 @@
                       || (label ? label.textContent.trim() : '')
                       || window.currentHoveredAction;
         if (!action) return;
-        const act = action.trim().toUpperCase();
-
-        if (act === 'CLOSE' || act === 'QUIT' || act === 'EXIT') {
-          triggerActionIfApplicable(act);
-          return;
-        }
-        if (act.startsWith('FLOAT') || act === 'PIN') {
-          triggerActionIfApplicable(act);
-          return;
-        }
-
-        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-        if (b && typeof b.open_file_dialog === 'function') {
-          b.open_file_dialog(act);
-        } else {
-          triggerActionIfApplicable(act);
-        }
+        triggerActionIfApplicable(action);
       };
 
       if (group) {
         group.addEventListener('mouseenter', () => setActivePetal(i));
         group.addEventListener('click', handlePetalClick);
-      }
-      if (slice && slice !== group) {
-        slice.addEventListener('mouseenter', () => setActivePetal(i));
-        slice.addEventListener('click', handlePetalClick);
       }
     }
 
@@ -1024,7 +1010,7 @@
     if (radialMenuEl) {
       radialMenuEl.addEventListener('click', (e) => {
         if (isDraggingWindow) return;
-        if (window.currentHoveredAction) {
+        if (e.target === radialMenuEl && window.currentHoveredAction) {
           triggerActionIfApplicable(window.currentHoveredAction);
         }
       });
