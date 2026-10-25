@@ -5186,12 +5186,12 @@ class RecordDialog(QDialog):
         self._center_on_screen()
 
     def _setup_ui(self) -> None:
-        outer_layout = QVBoxLayout(self)
-        outer_layout.setContentsMargins(10, 10, 10, 10)
+        self.outer_layout = QVBoxLayout(self)
+        self.outer_layout.setContentsMargins(10, 10, 10, 10)
 
-        container = QFrame()
-        container.setObjectName("recordContainer")
-        container.setStyleSheet("""
+        self.container = QFrame()
+        self.container.setObjectName("recordContainer")
+        self.container.setStyleSheet("""
             #recordContainer {
                 background-color: #ffffff;
                 border: 1px solid rgba(0, 0, 0, 0.12);
@@ -5203,28 +5203,30 @@ class RecordDialog(QDialog):
             }
         """)
 
-        shadow = QGraphicsDropShadowEffect(container)
+        shadow = QGraphicsDropShadowEffect(self.container)
         shadow.setBlurRadius(20)
         shadow.setColor(QColor(0, 0, 0, 45))
         shadow.setOffset(0, 4)
-        container.setGraphicsEffect(shadow)
+        self.container.setGraphicsEffect(shadow)
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(20, 16, 20, 16)
-        layout.setSpacing(12)
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(20, 16, 20, 16)
+        self.container_layout.setSpacing(12)
 
         # Header: Centered title with close button
-        header_layout = QHBoxLayout()
+        self.header_widget = QWidget()
+        header_layout = QHBoxLayout(self.header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
         header_layout.addSpacing(22)
 
-        title_label = QLabel("Screen Recorder")
-        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
-        header_layout.addWidget(title_label)
+        self.title_label = QLabel("Screen Recorder")
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(self.title_label)
 
-        close_btn = QPushButton("✕")
-        close_btn.setFixedSize(22, 22)
-        close_btn.setStyleSheet("""
+        self.close_btn = QPushButton("✕")
+        self.close_btn.setFixedSize(22, 22)
+        self.close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
                 color: rgba(0, 0, 0, 0.35);
@@ -5238,9 +5240,9 @@ class RecordDialog(QDialog):
                 color: #222222;
             }
         """)
-        close_btn.clicked.connect(self.reject)
-        header_layout.addWidget(close_btn)
-        layout.addLayout(header_layout)
+        self.close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(self.close_btn)
+        self.container_layout.addWidget(self.header_widget)
 
         # Status badge pill
         self.status_pill = QLabel("● Standby")
@@ -5255,7 +5257,7 @@ class RecordDialog(QDialog):
                 border-radius: 10px;
             }
         """)
-        layout.addWidget(self.status_pill)
+        self.container_layout.addWidget(self.status_pill)
 
         # Large Digital Timer Display ("00:00:00")
         self.timer_display = QLabel("00:00:00")
@@ -5272,14 +5274,14 @@ class RecordDialog(QDialog):
                 letter-spacing: 2px;
             }
         """)
-        layout.addWidget(self.timer_display)
+        self.container_layout.addWidget(self.timer_display)
 
         # Status / Destination text
         self.info_label = QLabel("Ready to record primary screen (25 FPS)")
         self.info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.info_label.setWordWrap(True)
         self.info_label.setStyleSheet("font-size: 11px; color: #666666;")
-        layout.addWidget(self.info_label)
+        self.container_layout.addWidget(self.info_label)
 
         # Open file button (initially hidden)
         self.open_folder_btn = QPushButton("Open Recording Folder")
@@ -5299,11 +5301,11 @@ class RecordDialog(QDialog):
         """)
         self.open_folder_btn.hide()
         self.open_folder_btn.clicked.connect(self._open_recording_folder)
-        layout.addWidget(self.open_folder_btn)
+        self.container_layout.addWidget(self.open_folder_btn)
 
         # Action Buttons: Stop (Left) and Start (Right)
-        btn_layout = QHBoxLayout()
-        btn_layout.setSpacing(10)
+        self.btn_layout = QHBoxLayout()
+        self.btn_layout.setSpacing(10)
 
         self.stop_btn = QPushButton("Stop")
         self.stop_btn.setEnabled(False)
@@ -5327,9 +5329,9 @@ class RecordDialog(QDialog):
             }
         """)
         self.stop_btn.clicked.connect(self._stop_recording)
-        btn_layout.addWidget(self.stop_btn)
+        self.btn_layout.addWidget(self.stop_btn)
 
-        btn_layout.addStretch()
+        self.btn_layout.addStretch()
 
         self.start_btn = QPushButton("Start")
         self.start_btn.setStyleSheet("""
@@ -5354,10 +5356,85 @@ class RecordDialog(QDialog):
             }
         """)
         self.start_btn.clicked.connect(self._start_recording)
-        btn_layout.addWidget(self.start_btn)
+        self.btn_layout.addWidget(self.start_btn)
 
-        layout.addLayout(btn_layout)
-        outer_layout.addWidget(container)
+        self.container_layout.addLayout(self.btn_layout)
+        self.outer_layout.addWidget(self.container)
+
+    def _set_mini_mode(self, mini: bool) -> None:
+        """Switch between standard dialog and compact bottom-right floating stop control."""
+        if mini:
+            self.header_widget.hide()
+            self.status_pill.hide()
+            self.timer_display.hide()
+            self.info_label.hide()
+            self.open_folder_btn.hide()
+            self.start_btn.hide()
+
+            self.stop_btn.setText("■ Stop")
+            self.stop_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #ef4444;
+                    color: white;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 14px;
+                    font-weight: bold;
+                    font-size: 12px;
+                }
+                QPushButton:hover {
+                    background-color: #dc2626;
+                }
+                QPushButton:disabled {
+                    background-color: rgba(239, 68, 68, 0.4);
+                    color: rgba(255, 255, 255, 0.7);
+                }
+            """)
+
+            self.container_layout.setContentsMargins(8, 6, 8, 6)
+            self.outer_layout.setContentsMargins(4, 4, 4, 4)
+            self.setFixedSize(140, 52)
+
+            screen = QApplication.primaryScreen()
+            if screen:
+                geo = screen.availableGeometry()
+                x = geo.right() - self.width() - 24
+                y = geo.bottom() - self.height() - 24
+                self.move(x, y)
+        else:
+            self.header_widget.show()
+            self.status_pill.show()
+            self.timer_display.show()
+            self.info_label.show()
+            self.start_btn.show()
+
+            self.stop_btn.setText("Stop")
+            self.stop_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #f3f4f6;
+                    color: #4b5563;
+                    border: none;
+                    border-radius: 8px;
+                    padding: 8px 18px;
+                    font-weight: 600;
+                    font-size: 13px;
+                }
+                QPushButton:hover {
+                    background-color: #e5e7eb;
+                    color: #111827;
+                }
+                QPushButton:disabled {
+                    background-color: rgba(0, 0, 0, 0.04);
+                    color: rgba(0, 0, 0, 0.25);
+                }
+            """)
+
+            self.container_layout.setContentsMargins(20, 16, 20, 16)
+            self.outer_layout.setContentsMargins(10, 10, 10, 10)
+            self.setFixedSize(340, 360)
+            self._center_on_screen()
+            self.activateWindow()
+            self.raise_()
 
     def _start_recording(self) -> None:
         if self._is_recording:
@@ -5403,14 +5480,12 @@ class RecordDialog(QDialog):
         self._is_recording = True
         self._recorder_thread.start()
         self._ui_timer.start()
-        self.showMinimized()
+        self._set_mini_mode(True)
 
     def _stop_recording(self) -> None:
         if not self._is_recording:
             return
-        self.showNormal()
-        self.activateWindow()
-        self.raise_()
+        self._set_mini_mode(False)
         self.stop_btn.setEnabled(False)
         self.status_pill.setText("● Finalizing video...")
         self.status_pill.setStyleSheet("""
@@ -5431,9 +5506,7 @@ class RecordDialog(QDialog):
         pass
 
     def _on_finished(self, saved_path: str) -> None:
-        self.showNormal()
-        self.activateWindow()
-        self.raise_()
+        self._set_mini_mode(False)
         self._is_recording = False
         self._current_output_path = saved_path
         self.start_btn.setEnabled(True)
@@ -5456,10 +5529,23 @@ class RecordDialog(QDialog):
         self.open_folder_btn.show()
 
     def _on_error(self, err_msg: str) -> None:
-        self.showNormal()
-        self.activateWindow()
-        self.raise_()
+        self._set_mini_mode(False)
         self._is_recording = False
+        self._ui_timer.stop()
+        self.start_btn.setEnabled(True)
+        self.stop_btn.setEnabled(False)
+        self.status_pill.setText("✕ Error")
+        self.status_pill.setStyleSheet("""
+            QLabel {
+                background-color: #fee2e2;
+                color: #dc2626;
+                font-size: 11px;
+                font-weight: 600;
+                padding: 4px 10px;
+                border-radius: 10px;
+            }
+        """)
+        self.info_label.setText(f"Error: {err_msg}")
         self._ui_timer.stop()
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
