@@ -3578,6 +3578,358 @@ class RedactDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class EditDialog(QDialog):
+    """Frameless dark-themed dialog for adjusting image Brightness, Contrast, and Saturation in real time."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self._drag_start_pos = None
+        self._preview_base: Image.Image | None = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedSize(500, 560)
+
+        self._load_base_image()
+        self._setup_ui()
+        self._center_on_screen()
+        self._update_preview()
+
+    def _load_base_image(self) -> None:
+        try:
+            with Image.open(self.file_path) as orig:
+                self._preview_base = orig.convert("RGBA")
+                self._preview_base.thumbnail((440, 220), Image.Resampling.LANCZOS)
+        except Exception as e:
+            print(f"[QuickDrop] Edit base image load error: {e}")
+            self._preview_base = None
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("editContainer")
+        container.setStyleSheet("""
+            #editContainer {
+                background-color: #1a1a1e;
+                border: 1px solid rgba(255, 255, 255, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #e5e5ea;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+            QSlider::groove:horizontal {
+                height: 6px;
+                background: rgba(255, 255, 255, 0.14);
+                border-radius: 3px;
+            }
+            QSlider::sub-page:horizontal {
+                background: #ff5500;
+                border-radius: 3px;
+            }
+            QSlider::handle:horizontal {
+                background: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.2);
+                width: 16px;
+                height: 16px;
+                margin-top: -5px;
+                margin-bottom: -5px;
+                border-radius: 8px;
+            }
+        """)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        # Header
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+
+        title_label = QLabel("Edit Image")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #ffffff;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(255, 255, 255, 0.4);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(255, 255, 255, 0.1);
+                color: #ffffff;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        filename_label = QLabel(os.path.basename(self.file_path))
+        filename_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        filename_label.setStyleSheet("color: #8e8e93; font-size: 11px; margin-top: -4px;")
+        layout.addWidget(filename_label)
+
+        # Preview area
+        preview_frame = QFrame()
+        preview_frame.setStyleSheet("""
+            QFrame {
+                background-color: rgba(0, 0, 0, 0.35);
+                border: 1px solid rgba(255, 255, 255, 0.08);
+                border-radius: 10px;
+            }
+        """)
+        preview_layout = QVBoxLayout(preview_frame)
+        preview_layout.setContentsMargins(6, 6, 6, 6)
+
+        self.preview_label = QLabel()
+        self.preview_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.preview_label.setMinimumHeight(200)
+        preview_layout.addWidget(self.preview_label)
+        layout.addWidget(preview_frame, stretch=1)
+
+        # Sliders container
+        sliders_layout = QVBoxLayout()
+        sliders_layout.setSpacing(8)
+
+        # 1. Brightness
+        b_row = QHBoxLayout()
+        self.bright_lbl = QLabel("Brightness: 100%")
+        self.bright_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.bright_slider = QSlider(Qt.Orientation.Horizontal)
+        self.bright_slider.setRange(0, 200)
+        self.bright_slider.setValue(100)
+        self.bright_slider.valueChanged.connect(self._on_slider_change)
+        b_row.addWidget(self.bright_lbl)
+        b_row.addWidget(self.bright_slider)
+        sliders_layout.addLayout(b_row)
+
+        # 2. Contrast
+        c_row = QHBoxLayout()
+        self.contrast_lbl = QLabel("Contrast: 100%")
+        self.contrast_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.contrast_slider = QSlider(Qt.Orientation.Horizontal)
+        self.contrast_slider.setRange(0, 200)
+        self.contrast_slider.setValue(100)
+        self.contrast_slider.valueChanged.connect(self._on_slider_change)
+        c_row.addWidget(self.contrast_lbl)
+        c_row.addWidget(self.contrast_slider)
+        sliders_layout.addLayout(c_row)
+
+        # 3. Saturation
+        s_row = QHBoxLayout()
+        self.sat_lbl = QLabel("Saturation: 100%")
+        self.sat_lbl.setStyleSheet("font-size: 12px; font-weight: 600; min-width: 120px;")
+        self.sat_slider = QSlider(Qt.Orientation.Horizontal)
+        self.sat_slider.setRange(0, 200)
+        self.sat_slider.setValue(100)
+        self.sat_slider.valueChanged.connect(self._on_slider_change)
+        s_row.addWidget(self.sat_lbl)
+        s_row.addWidget(self.sat_slider)
+        sliders_layout.addLayout(s_row)
+
+        layout.addLayout(sliders_layout)
+
+        # Bottom buttons row
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+
+        reset_btn = QPushButton("Reset")
+        reset_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #e5e5ea;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+        """)
+        reset_btn.clicked.connect(self._on_reset)
+        bottom_layout.addWidget(reset_btn)
+
+        bottom_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(255, 255, 255, 0.08);
+                color: #e5e5ea;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 255, 255, 0.14);
+                color: #ffffff;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        bottom_layout.addWidget(cancel_btn)
+
+        apply_btn = QPushButton("Apply Adjustments")
+        apply_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        apply_btn.clicked.connect(self._on_apply)
+        bottom_layout.addWidget(apply_btn)
+
+        layout.addLayout(bottom_layout)
+        outer_layout.addWidget(container)
+
+    def _on_slider_change(self) -> None:
+        self.bright_lbl.setText(f"Brightness: {self.bright_slider.value()}%")
+        self.contrast_lbl.setText(f"Contrast: {self.contrast_slider.value()}%")
+        self.sat_lbl.setText(f"Saturation: {self.sat_slider.value()}%")
+        self._update_preview()
+
+    def _on_reset(self) -> None:
+        self.bright_slider.setValue(100)
+        self.contrast_slider.setValue(100)
+        self.sat_slider.setValue(100)
+        self._on_slider_change()
+
+    def _update_preview(self) -> None:
+        if self._preview_base is None:
+            return
+        b_factor = self.bright_slider.value() / 100.0
+        c_factor = self.contrast_slider.value() / 100.0
+        s_factor = self.sat_slider.value() / 100.0
+
+        try:
+            img = self._preview_base.copy()
+            if b_factor != 1.0:
+                img = ImageEnhance.Brightness(img).enhance(b_factor)
+            if c_factor != 1.0:
+                img = ImageEnhance.Contrast(img).enhance(c_factor)
+            if s_factor != 1.0:
+                img = ImageEnhance.Color(img).enhance(s_factor)
+
+            rgba = img.convert("RGBA")
+            raw_data = rgba.tobytes("raw", "RGBA")
+            qimg = QImage(raw_data, rgba.width, rgba.height, QImage.Format.Format_RGBA8888)
+            self.preview_label.setPixmap(QPixmap.fromImage(qimg))
+        except Exception as e:
+            print(f"[QuickDrop] Edit preview error: {e}")
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def _on_apply(self) -> None:
+        try:
+            dir_name = os.path.dirname(os.path.abspath(self.file_path))
+            base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+            output_path = os.path.join(dir_name, f"{base_name}_edited{ext}")
+
+            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
+                output_path = os.path.join(dir_name, f"{base_name}_edited_1{ext}")
+
+            b_factor = self.bright_slider.value() / 100.0
+            c_factor = self.contrast_slider.value() / 100.0
+            s_factor = self.sat_slider.value() / 100.0
+
+            with Image.open(self.file_path) as orig_img:
+                orig_format = orig_img.format
+                has_alpha = orig_img.mode in ("RGBA", "LA") or (
+                    orig_img.mode == "P" and "transparency" in orig_img.info
+                )
+                target = orig_img.convert("RGBA") if has_alpha else orig_img.convert("RGB")
+
+                if b_factor != 1.0:
+                    target = ImageEnhance.Brightness(target).enhance(b_factor)
+                if c_factor != 1.0:
+                    target = ImageEnhance.Contrast(target).enhance(c_factor)
+                if s_factor != 1.0:
+                    target = ImageEnhance.Color(target).enhance(s_factor)
+
+                ext_lower = ext.lower()
+                if ext_lower in (".jpg", ".jpeg"):
+                    target.convert("RGB").save(output_path, "JPEG", quality=95)
+                elif ext_lower == ".png":
+                    target.save(output_path, "PNG", optimize=True)
+                elif ext_lower == ".webp":
+                    target.save(output_path, "WEBP", quality=95)
+                else:
+                    fmt = orig_format or "PNG"
+                    if fmt.upper() in ("JPEG", "JPG"):
+                        target.convert("RGB").save(output_path, format=fmt, quality=95)
+                    else:
+                        target.save(output_path, format=fmt)
+
+            print(f"[QuickDrop] Edited '{self.file_path}' -> '{output_path}'")
+            self.accept()
+        except Exception as e:
+            print(f"[QuickDrop ERROR] Edit error: {e}")
+            self.reject()
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -3679,7 +4031,7 @@ class QuickDropBridge(QObject):
     def trigger_action(self, action_name: str) -> None:
         print(f"DEBUG: trigger_action called with: {action_name}")
         act_upper = action_name.strip().upper()
-        if act_upper in ("WATERMARK", "REDACT"):
+        if act_upper in ("WATERMARK", "REDACT", "EDIT"):
             self.window.open_file_dialog(act_upper)
         else:
             self.window._handle_action_click(action_name)
@@ -3945,6 +4297,16 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     if d in self._dialogs
                     else None
                 )
+        elif act_upper == "EDIT":
+            for path in file_paths:
+                dialog = EditDialog(path, self)
+                dialog.show()
+                self._dialogs.append(dialog)
+                dialog.finished.connect(
+                    lambda _, d=dialog: self._dialogs.remove(d)
+                    if d in self._dialogs
+                    else None
+                )
         elif (
             act_upper == "ADD BG"
             or act_upper in ConversionWorker.FORMAT_MAP
@@ -3971,7 +4333,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         file_filter = (
             "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
-            if act_upper in ("WATERMARK", "REDACT", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
+            if act_upper in ("WATERMARK", "REDACT", "EDIT", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
             else "All Files (*.*);;All Files (*)"
         )
 
@@ -4332,7 +4694,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._execute_terminal()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
-        elif act in ("WATERMARK", "REDACT"):
+        elif act in ("WATERMARK", "REDACT", "EDIT"):
             self.open_file_dialog(act)
         else:
             self.open_file_dialog(action_name)
@@ -4510,7 +4872,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                     def on_action(action: str | None) -> None:
                         if action:
                             act = action.strip().upper()
-                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT") or act.startswith("FLOAT"):
+                            if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT", "EDIT") or act.startswith("FLOAT"):
                                 self._handle_action_click(act)
                     self.page().runJavaScript("window.currentHoveredAction", on_action)
         elif event.type() == QEvent.Type.KeyPress:
@@ -4573,7 +4935,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             def on_action(action: str | None) -> None:
                 if action:
                     act = action.strip().upper()
-                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT") or act.startswith("FLOAT"):
+                    if act in ("SCREENSHOT", "TERMINAL", "FLOAT", "PIN", "WATERMARK", "REDACT", "EDIT") or act.startswith("FLOAT"):
                         self._handle_action_click(act)
             self.page().runJavaScript("window.currentHoveredAction", on_action)
 
