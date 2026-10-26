@@ -7494,10 +7494,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
             mods = QApplication.keyboardModifiers()
-            if mods & Qt.KeyboardModifier.ShiftModifier:
-                self._sync_modifier("SHIFT")
-            elif mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier):
-                self._sync_modifier("CTRL")
+            if mods & (Qt.KeyboardModifier.ShiftModifier | Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier | Qt.KeyboardModifier.MetaModifier):
+                self._sync_modifier("MODIFIER")
             else:
                 self._sync_modifier("DEFAULT")
             pos = event.position()
