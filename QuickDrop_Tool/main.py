@@ -12,6 +12,7 @@ import io
 import math
 import mimetypes
 import operator as _py_op
+import random
 import shutil
 import socket
 import subprocess
@@ -19,6 +20,21 @@ import time
 import urllib.parse
 
 import qrcode
+import requests
+from dotenv import load_dotenv
+
+# Load environment variables (.env) from current directory, script directory, or repo root
+_script_dir = os.path.dirname(os.path.abspath(__file__))
+for _env_candidate in [
+    os.path.join(os.getcwd(), ".env"),
+    os.path.join(_script_dir, ".env"),
+    os.path.join(os.path.dirname(_script_dir), ".env"),
+]:
+    if os.path.isfile(_env_candidate):
+        load_dotenv(_env_candidate)
+        break
+else:
+    load_dotenv()
 
 try:
     from PyQt5.QtGui import QCursor
@@ -6524,6 +6540,586 @@ class ShareDialog(QDialog):
         super().reject()
 
 
+class AIDetectorWorker(QThread):
+    """Background worker sending an image to Hugging Face AI-image-detector online API."""
+
+    API_URL = "https://api-inference.huggingface.co/models/umm-maybe/AI-image-detector"
+
+    progress_updated = pyqtSignal(int, str)
+    scan_finished = pyqtSignal(dict)
+    scan_error = pyqtSignal(str)
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = os.path.abspath(file_path)
+        self._is_cancelled = False
+
+    def cancel(self) -> None:
+        self._is_cancelled = True
+
+    def run(self) -> None:
+        if not os.path.isfile(self.file_path):
+            self.scan_error.emit(f"File not found: {self.file_path}")
+            return
+
+        api_key = (os.getenv("HF_API_KEY") or os.getenv("HUGGINGFACE_API_KEY") or "").strip()
+        if not api_key or api_key == "your_huggingface_token_here":
+            self.scan_error.emit("API Key Missing: Please set your HF_API_KEY in the .env file.")
+            return
+
+        try:
+            self.progress_updated.emit(20, "Reading image bytes...")
+            with open(self.file_path, "rb") as f:
+                image_data = f.read()
+
+            if self._is_cancelled or self.isInterruptionRequested():
+                return
+
+            self.progress_updated.emit(45, "Contacting Hugging Face AI detector...")
+
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/octet-stream",
+            }
+
+            self.progress_updated.emit(70, "Running deep neural classification...")
+            response = requests.post(
+                self.API_URL,
+                headers=headers,
+                data=image_data,
+                timeout=25,
+            )
+
+            if self._is_cancelled or self.isInterruptionRequested():
+                return
+
+            if response.status_code != 200:
+                error_msg = ""
+                try:
+                    err_payload = response.json()
+                    if isinstance(err_payload, dict):
+                        error_msg = str(err_payload.get("error", response.text))
+                    else:
+                        error_msg = str(err_payload)
+                except Exception:
+                    error_msg = response.text or f"HTTP {response.status_code}: {response.reason}"
+
+                print(f"AI API ERROR: HTTP {response.status_code} - {error_msg}")
+
+                if response.status_code == 503 or "loading" in error_msg.lower() or "warm" in error_msg.lower():
+                    self.scan_error.emit("Model is warming up, please wait 20 seconds and try again.")
+                elif response.status_code == 401:
+                    self.scan_error.emit("API Error: Unauthorized (Invalid Hugging Face API key).")
+                elif response.status_code == 403:
+                    self.scan_error.emit("API Error: Forbidden (Check Hugging Face token permissions).")
+                elif response.status_code == 429:
+                    self.scan_error.emit("API Error: Rate Limit Reached. Please wait a moment and try again.")
+                else:
+                    self.scan_error.emit(f"API Error ({response.status_code}): {error_msg}")
+                return
+
+            data = response.json()
+
+            # Handle possible error dictionary inside 200 response
+            if isinstance(data, dict) and "error" in data:
+                err_text = str(data["error"])
+                print(f"AI API ERROR: {err_text}")
+                if "loading" in err_text.lower() or "warm" in err_text.lower():
+                    self.scan_error.emit("Model is warming up, please wait 20 seconds and try again.")
+                else:
+                    self.scan_error.emit(f"API Error: {err_text}")
+                return
+
+            # Extract list of predictions
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], list):
+                items = data[0]
+            elif isinstance(data, list):
+                items = data
+            else:
+                items = []
+
+            if not items:
+                err_msg = "Empty response received from AI model."
+                print(f"AI API ERROR: {err_msg}")
+                self.scan_error.emit(f"API Error: {err_msg}")
+                return
+
+            self.progress_updated.emit(95, "Evaluating prediction scores...")
+
+            artificial_score = 0.0
+            human_score = 0.0
+
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                lbl = str(item.get("label", "")).lower().strip()
+                score = float(item.get("score", 0.0))
+                if any(k in lbl for k in ("artificial", "ai", "fake", "synthetic", "generated")):
+                    artificial_score = max(artificial_score, score)
+                elif any(k in lbl for k in ("human", "real", "authentic", "natural")):
+                    human_score = max(human_score, score)
+
+            # Fallback if specific labels not matched
+            if artificial_score == 0.0 and human_score == 0.0:
+                top_item = max(items, key=lambda x: x.get("score", 0.0) if isinstance(x, dict) else 0.0)
+                lbl = str(top_item.get("label", "")).lower().strip()
+                score = float(top_item.get("score", 0.0))
+                if any(k in lbl for k in ("art", "ai", "synth", "fake")):
+                    artificial_score = score
+                else:
+                    human_score = score
+
+            is_ai = artificial_score >= human_score
+            if is_ai:
+                confidence = int(round(artificial_score * 100))
+                result_str = f"⚠️ AI Generated: {confidence}% Confidence"
+                detail = f"Hugging Face neural classifier detected synthetic image patterns ({confidence}% confidence)."
+            else:
+                confidence = int(round(human_score * 100)) if human_score > 0 else int(round((1.0 - artificial_score) * 100))
+                result_str = f"✅ Authentic: {confidence}%"
+                detail = f"Hugging Face neural classifier verified natural photographic sensor patterns ({confidence}% confidence)."
+
+            self.progress_updated.emit(100, "Analysis complete!")
+            self.scan_finished.emit({
+                "file_path": self.file_path,
+                "is_ai": is_ai,
+                "confidence": confidence,
+                "result_str": result_str,
+                "detail": detail,
+            })
+
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            print(f"AI API ERROR: {e}")
+            self.scan_error.emit("Internet not available: Please check your network connection.")
+        except requests.exceptions.RequestException as e:
+            print(f"AI API ERROR: {e}")
+            self.scan_error.emit("Internet not available: Please check your network connection.")
+        except Exception as e:
+            print(f"AI API ERROR: {e}")
+            self.scan_error.emit(f"Error: {e}")
+
+
+class AIDetectDialog(QDialog):
+    """Frameless modern light-themed dialog for deep AI image detection."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = os.path.abspath(file_path)
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Dialog
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedWidth(410)
+
+        self._setup_ui()
+        self.adjustSize()
+        self._center_on_screen()
+
+        # Initialize and launch background detector
+        self.worker = AIDetectorWorker(self.file_path, parent=self)
+        self.worker.progress_updated.connect(self._on_progress)
+        self.worker.scan_finished.connect(self._on_finished)
+        self.worker.scan_error.connect(self._on_error)
+        self.worker.start()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("aiDetectContainer")
+        container.setStyleSheet("""
+            #aiDetectContainer {
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 18px;
+            }
+            QLabel {
+                color: #1e293b;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(12)
+
+        # Header: Title + Close Button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(24)
+
+        title_label = QLabel("🧠 AI Image Detector")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1e293b;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(24, 24)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.4);
+                font-size: 13px;
+                font-weight: bold;
+                border: none;
+                border-radius: 12px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #1e293b;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # File info banner with thumbnail
+        file_banner = QFrame()
+        file_banner.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 6px;
+            }
+        """)
+        banner_layout = QHBoxLayout(file_banner)
+        banner_layout.setContentsMargins(10, 6, 10, 6)
+
+        thumb_lbl = QLabel()
+        pix = QPixmap(self.file_path)
+        if not pix.isNull():
+            thumb = pix.scaled(44, 44, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            thumb_lbl.setPixmap(thumb)
+            thumb_lbl.setStyleSheet("border-radius: 6px; border: 1px solid #cbd5e1;")
+        else:
+            thumb_lbl.setText("🖼️")
+            thumb_lbl.setStyleSheet("font-size: 22px;")
+        banner_layout.addWidget(thumb_lbl)
+
+        file_details = QVBoxLayout()
+        file_details.setSpacing(2)
+        filename = os.path.basename(self.file_path)
+        name_lbl = QLabel(filename)
+        name_lbl.setStyleSheet("font-weight: 600; font-size: 13px; color: #0f172a;")
+        size_bytes = os.path.getsize(self.file_path) if os.path.isfile(self.file_path) else 0
+        meta_str = f"{pix.width()}×{pix.height()} • {self._format_size(size_bytes)}" if not pix.isNull() else self._format_size(size_bytes)
+        meta_lbl = QLabel(meta_str)
+        meta_lbl.setStyleSheet("font-size: 11px; color: #64748b;")
+        file_details.addWidget(name_lbl)
+        file_details.addWidget(meta_lbl)
+        banner_layout.addLayout(file_details)
+        banner_layout.addStretch()
+
+        layout.addWidget(file_banner)
+
+        # Scanning Card (Active during scan)
+        self.scan_card = QFrame()
+        self.scan_card.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 12px;
+            }
+        """)
+        scan_card_layout = QVBoxLayout(self.scan_card)
+        scan_card_layout.setContentsMargins(16, 14, 16, 14)
+        scan_card_layout.setSpacing(10)
+
+        self.status_title = QLabel("Scanning pixels...")
+        self.status_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_title.setStyleSheet("font-size: 13px; font-weight: 600; color: #1e293b;")
+        scan_card_layout.addWidget(self.status_title)
+
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(10)
+        self.progress_bar.setFixedHeight(8)
+        self.progress_bar.setTextVisible(False)
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                background-color: #e2e8f0;
+                border: none;
+                border-radius: 4px;
+            }
+            QProgressBar::chunk {
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff7300, stop:1 #e04b00);
+                border-radius: 4px;
+            }
+        """)
+        scan_card_layout.addWidget(self.progress_bar)
+
+        self.status_detail = QLabel("Initializing neural inspection...")
+        self.status_detail.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.status_detail.setWordWrap(True)
+        self.status_detail.setStyleSheet("font-size: 11px; color: #64748b;")
+        scan_card_layout.addWidget(self.status_detail)
+
+        layout.addWidget(self.scan_card)
+
+        # Result Card (Hidden until finished)
+        self.result_card = QFrame()
+        self.result_card.hide()
+        result_card_layout = QVBoxLayout(self.result_card)
+        result_card_layout.setContentsMargins(16, 14, 16, 14)
+        result_card_layout.setSpacing(10)
+
+        self.result_pill = QLabel()
+        self.result_pill.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.result_pill.setWordWrap(True)
+        result_card_layout.addWidget(self.result_pill)
+
+        self.confidence_bar = QProgressBar()
+        self.confidence_bar.setRange(0, 100)
+        self.confidence_bar.setFixedHeight(8)
+        self.confidence_bar.setTextVisible(False)
+        result_card_layout.addWidget(self.confidence_bar)
+
+        self.result_detail = QLabel()
+        self.result_detail.setWordWrap(True)
+        self.result_detail.setStyleSheet("font-size: 11.5px; color: #475569; line-height: 1.4;")
+        result_card_layout.addWidget(self.result_detail)
+
+        layout.addWidget(self.result_card)
+
+        # Bottom Button
+        self.action_btn = QPushButton("Cancel")
+        self.action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #475569;
+                border: none;
+                border-radius: 8px;
+                padding: 9px;
+                font-weight: 600;
+                font-size: 13px;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #1e293b;
+            }
+        """)
+        self.action_btn.clicked.connect(self.reject)
+        layout.addWidget(self.action_btn)
+
+        outer_layout.addWidget(container)
+
+    def _on_progress(self, pct: int, msg: str) -> None:
+        self.progress_bar.setValue(pct)
+        self.status_detail.setText(msg)
+
+    def _on_finished(self, data: dict) -> None:
+        self.scan_card.hide()
+
+        is_ai = data.get("is_ai", False)
+        confidence = data.get("confidence", 90)
+        result_str = data.get("result_str", "")
+        detail = data.get("detail", "")
+
+        self.result_pill.setText(result_str)
+        if is_ai:
+            self.result_card.setStyleSheet("""
+                QFrame {
+                    background-color: #fef2f2;
+                    border: 1px solid #fecaca;
+                    border-radius: 12px;
+                }
+            """)
+            self.result_pill.setStyleSheet("""
+                font-size: 15px;
+                font-weight: bold;
+                color: #dc2626;
+                padding: 4px;
+            """)
+            self.confidence_bar.setStyleSheet("""
+                QProgressBar {
+                    background-color: #fee2e2;
+                    border: none;
+                    border-radius: 4px;
+                }
+                QProgressBar::chunk {
+                    background-color: #dc2626;
+                    border-radius: 4px;
+                }
+            """)
+        else:
+            self.result_card.setStyleSheet("""
+                QFrame {
+                    background-color: #f0fdf4;
+                    border: 1px solid #bbf7d0;
+                    border-radius: 12px;
+                }
+            """)
+            self.result_pill.setStyleSheet("""
+                font-size: 15px;
+                font-weight: bold;
+                color: #16a34a;
+                padding: 4px;
+            """)
+            self.confidence_bar.setStyleSheet("""
+                QProgressBar {
+                    background-color: #dcfce7;
+                    border: none;
+                    border-radius: 4px;
+                }
+                QProgressBar::chunk {
+                    background-color: #16a34a;
+                    border-radius: 4px;
+                }
+            """)
+
+        self.confidence_bar.setValue(confidence)
+        self.confidence_bar.show()
+        self.result_detail.setText(detail)
+        self.result_card.show()
+
+        # Update button to Done
+        self.action_btn.setText("Done")
+        self.action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: #ffffff;
+                border: none;
+                border-radius: 8px;
+                padding: 9px;
+                font-weight: bold;
+                font-size: 13px;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+        """)
+        try:
+            self.action_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.action_btn.clicked.connect(self.accept)
+
+        self.adjustSize()
+
+    def _on_error(self, err_msg: str) -> None:
+        self.scan_card.hide()
+        self.result_card.setStyleSheet("""
+            QFrame {
+                background-color: #fef2f2;
+                border: 1px solid #fecaca;
+                border-radius: 12px;
+            }
+        """)
+        self.result_pill.setText("⚠️ Scan Error")
+        self.result_pill.setStyleSheet("""
+            font-size: 15px;
+            font-weight: bold;
+            color: #dc2626;
+            padding: 4px;
+        """)
+        self.confidence_bar.hide()
+        self.result_detail.setText(err_msg)
+        self.result_detail.setStyleSheet("font-size: 11.5px; color: #b91c1c; line-height: 1.4;")
+        self.result_card.show()
+
+        self.action_btn.setText("Close")
+        self.action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.08);
+                color: #334155;
+                border: none;
+                border-radius: 8px;
+                padding: 9px;
+                font-weight: 600;
+                font-size: 13px;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.12);
+                color: #0f172a;
+            }
+        """)
+        try:
+            self.action_btn.clicked.disconnect()
+        except Exception:
+            pass
+        self.action_btn.clicked.connect(self.reject)
+        self.adjustSize()
+
+    def _format_size(self, num_bytes: int) -> str:
+        for unit in ["B", "KB", "MB", "GB"]:
+            if num_bytes < 1024.0:
+                return f"{num_bytes:.1f} {unit}" if unit != "B" else f"{num_bytes} B"
+            num_bytes /= 1024.0
+        return f"{num_bytes:.1f} TB"
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            child = self.childAt(event.position().toPoint())
+            if child is not None and isinstance(child, QPushButton):
+                return
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if hasattr(self, "worker") and self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.requestInterruption()
+            self.worker.wait(1000)
+        super().closeEvent(event)
+
+    def reject(self) -> None:
+        if hasattr(self, "worker") and self.worker and self.worker.isRunning():
+            self.worker.cancel()
+            self.worker.requestInterruption()
+            self.worker.wait(1000)
+        super().reject()
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -6719,6 +7315,12 @@ class QuickDropBridge(QObject):
             self.window._tray_icon.hide()
         QApplication.quit()
 
+    @QtCore.pyqtSlot(list, str)
+    def drop_files_action(self, file_paths: list, action_name: str) -> None:
+        """Handle dropped files with a specific target action from WebChannel."""
+        print(f"--> [BACKEND] drop_files_action: {action_name} | Files: {file_paths}")
+        self.window.process_dropped_files(action_name, [str(p) for p in file_paths])
+
     @QtCore.pyqtSlot(str)
     def trigger_action(self, action_name: str) -> None:
         now = time.time()
@@ -6730,7 +7332,7 @@ class QuickDropBridge(QObject):
         act_upper = action_name.strip().upper()
         if act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.window.toggle_keep_awake()
-        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE"):
+        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE", "AI DETECT", "AI_DETECT", "AIDETECT"):
             self.window.open_file_dialog(act_upper)
         else:
             self.window._handle_action_click(action_name)
@@ -7056,6 +7658,9 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         elif act_upper in ("AIRDROP", "SHARE", "LOCAL SHARE", "LOCAL_SHARE"):
             for path in file_paths:
                 self._open_share(path)
+        elif act_upper in ("AI DETECT", "AI_DETECT", "AIDETECT"):
+            for path in file_paths:
+                self._open_ai_detect(path)
         elif act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.toggle_keep_awake()
         elif (
@@ -7096,7 +7701,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         file_filter = (
             "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
-            if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR")
+            if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT")
             else "All Files (*.*);;All Files (*)"
         )
 
@@ -7465,7 +8070,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self.toggle_float_on_top(target_state)
         elif act in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.toggle_keep_awake()
-        elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE"):
+        elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE", "AI DETECT", "AI_DETECT"):
             self.open_file_dialog(act)
         else:
             self.open_file_dialog(action_name)
@@ -7601,6 +8206,20 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             print(f"[QuickDrop AirDrop] File not found: '{file_path}'")
             return
         dialog = ShareDialog(file_path, self)
+        dialog.show()
+        self._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self._dialogs.remove(d)
+            if d in self._dialogs
+            else None
+        )
+
+    def _open_ai_detect(self, file_path: str) -> None:
+        """Open the AI Image Detector dialog with simulated deep neural analysis."""
+        if not os.path.isfile(file_path):
+            print(f"[QuickDrop AI Detect] File not found: '{file_path}'")
+            return
+        dialog = AIDetectDialog(file_path, self)
         dialog.show()
         self._dialogs.append(dialog)
         dialog.finished.connect(

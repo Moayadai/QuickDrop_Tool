@@ -480,9 +480,17 @@
           <text id="label-8" class="segment-label" x="72.07" y="151.68">TIFF</text>
         </g>
 
-        <!-- 9: BMP (Top-Left / 324°) -->
+        <!-- 9: BMP / AI DETECT (Top-Left / 324°) -->
         <g id="petal-group-9" class="petal-group action-btn">
           <path id="slice-9" class="petal-slice petal" data-index="9" data-format="BMP" d="M 131.75 147.68 L 47.61 86.55 A 176.00 176.00 0 0 1 135.61 22.61 L 167.75 121.52 A 72.00 72.00 0 0 0 131.75 147.68 Z" />
+          <g id="icon-ai-detect" class="petal-icon" style="display: none; pointer-events: none;" transform="translate(108, 62)">
+            <path d="M2 2h3v1.5H2v3H.5V2A1.5 1.5 0 0 1 2 .5h3V2H2z" fill="#ffffff" opacity="0.95"/>
+            <path d="M16 2h-3V.5h3A1.5 1.5 0 0 1 17.5 2v3H16V2z" fill="#ffffff" opacity="0.95"/>
+            <path d="M17.5 13v3a1.5 1.5 0 0 1-1.5 1.5h-3V16h3v-3h1.5z" fill="#ffffff" opacity="0.95"/>
+            <path d="M2 16h3v1.5H2A1.5 1.5 0 0 1 .5 16v-3H2v3z" fill="#ffffff" opacity="0.95"/>
+            <circle cx="9" cy="9" r="3" fill="none" stroke="#ffffff" stroke-width="1.3"/>
+            <path d="M4 9h2.5 M11.5 9h2.5 M9 4v2.5 M9 11.5v2.5" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round"/>
+          </g>
           <text id="label-9" class="segment-label" x="117.11" y="89.68">BMP</text>
         </g>
       </svg>
@@ -582,7 +590,7 @@
       "PDF", "DOCX", "TXT", "JPG", "PNG", "WEBP", "HEIC", "AVIF", "TIFF", "BMP"
     ];
     const ctrlCmdState = [
-      "COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK", "OCR", "CONVERT"
+      "COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK", "OCR", "AI DETECT"
     ];
     const shiftState = [
       "AIRDROP", "FLOAT", "COPY PATH", "TERMINAL", "SCREENSHOT", "COLOR", "KEEP AWAKE", "RECORD", "TIMER", "CALC"
@@ -665,6 +673,19 @@
       // Synchronize float visual state on petals
       updateFloatVisualState();
       updateKeepAwakeVisualState();
+
+      // Synchronize AI DETECT icon
+      const aiIcon = document.getElementById('icon-ai-detect');
+      const label9 = document.getElementById('label-9');
+      if (aiIcon && label9) {
+        if (stateArray[9] === 'AI DETECT') {
+          aiIcon.style.display = 'block';
+          label9.setAttribute('y', '96');
+        } else {
+          aiIcon.style.display = 'none';
+          label9.setAttribute('y', '89.68');
+        }
+      }
 
       // Update center circle dynamically
       if (currentHoverIndex >= 0 && currentHoverIndex < stateArray.length) {
@@ -987,6 +1008,18 @@
           b.trigger_action('AIRDROP');
         } else {
           document.title = 'quickdrop:action:AIRDROP:' + Date.now();
+        }
+        return;
+      }
+
+      if (act === 'AI DETECT' || act === 'AI_DETECT' || act === 'AIDETECT') {
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.open_file_dialog === 'function') {
+          b.open_file_dialog('AI DETECT');
+        } else if (b && typeof b.trigger_action === 'function') {
+          b.trigger_action('AI DETECT');
+        } else {
+          document.title = 'quickdrop:action:AI DETECT:' + Date.now();
         }
         return;
       }
