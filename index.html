@@ -4,6 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Tangerine Radial Menu</title>
+  <!-- Premium Icon Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <script src="qwebchannel.js"></script>
   <style>
     *, *::before, *::after {
@@ -12,6 +17,17 @@
       padding: 0;
       user-select: none;
       -webkit-user-select: none;
+    }
+
+    :root {
+      --tangerine: #FF7A00;
+      --tangerine-hover: #FF8F1F;
+      --tangerine-glow: rgba(255, 122, 0, 0.45);
+      --glass-bg: rgba(255, 255, 255, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.95);
+      --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.05);
+      --text-dark: #111111;
+      --text-muted: #555555;
     }
 
     /* Base Reset & Transparent Window */
@@ -47,7 +63,7 @@
       cursor: grabbing;
     }
 
-    /* Main Radial Menu Container - macOS Glassmorphism */
+    /* Main Radial Menu Container - Light Frosted Glass Theme */
     .main-container, .radial-menu {
       position: absolute;
       top: 50%;
@@ -56,25 +72,25 @@
       width: 380px;
       height: 380px;
       border-radius: 50%;
-      background: rgba(28, 28, 30, 0.72) !important;
-      backdrop-filter: blur(40px) saturate(180%) !important;
-      -webkit-backdrop-filter: blur(40px) saturate(180%) !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.16) !important;
-      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.65), inset 0 0 20px rgba(255, 255, 255, 0.05) !important;
+      background: rgba(255, 255, 255, 0.7) !important;
+      backdrop-filter: blur(28px) saturate(200%) !important;
+      -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
+      border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 20px 55px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.05), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
-      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: box-shadow 0.25s ease, border-color 0.25s ease;
     }
 
     .radial-menu:active {
       cursor: grabbing;
     }
 
-    /* Specular Donut Ring inside radial menu */
+    /* Frosted Donut Ring Backing */
     .glass-donut-backdrop {
       position: absolute;
       top: 50%;
@@ -85,10 +101,9 @@
       border-radius: 50%;
       -webkit-mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
       mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
-      background: rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.75) !important;
       pointer-events: none;
       z-index: 1;
-      transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
     }
 
     /* SVG Flower Petals Container (380x380) */
@@ -104,41 +119,39 @@
       z-index: 10;
     }
 
-    /* Glass Donut Track: Translucent circular container ring */
+    /* Circular Donut Base Track */
     .donut-track {
       fill: none;
-      stroke: rgba(255, 255, 255, 0.06);
+      stroke: rgba(255, 255, 255, 0.8) !important;
       stroke-width: 104px;
       pointer-events: none;
     }
 
-    /* Petal Group: Holds slice path and label text */
+    /* Petal Group: Holds slice path, icon, and label text */
     .petal-group {
       transform-origin: 190px 190px;
-      transition: transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
-                  filter 0.28s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
+                  filter 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
       will-change: transform, filter;
       cursor: pointer;
     }
 
-    /* Seamless Wedge Shapes: Connected pie-chart style segments of the wheel */
+    /* Seamless Wedge Shapes: 8 connected macOS-style segments */
     .petal-slice {
-      fill: rgba(255, 255, 255, 0.08);
-      stroke: rgba(255, 255, 255, 0.22);
-      stroke-width: 1.5px;
+      fill: rgba(255, 255, 255, 0.7) !important;
+      stroke: rgba(255, 255, 255, 0.95) !important;
+      stroke-width: 1.5px !important;
       stroke-linejoin: round;
       cursor: pointer;
-      transition: fill 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-                  stroke 0.25s cubic-bezier(0.2, 0.8, 0.2, 1),
-                  stroke-width 0.25s ease;
+      transition: fill 0.15s ease, stroke 0.15s ease;
       will-change: fill, stroke;
     }
 
-    /* Radial Petals / Action Buttons Hover Physics */
+    /* Radial Petals / Action Buttons Hover Physics - Vibrant Tangerine Highlight */
     .petal-group:hover,
     .petal-group.active {
-      transform: scale(1.04);
-      filter: drop-shadow(0 6px 20px rgba(255, 85, 0, 0.6));
+      transform: scale(1.048);
+      filter: drop-shadow(0 8px 24px rgba(255, 122, 0, 0.6));
     }
 
     .petal-group:active {
@@ -148,38 +161,61 @@
 
     .petal-group:hover .petal-slice,
     .petal-group.active .petal-slice {
-      fill: url(#tangerine-grad) #ff5500;
-      stroke: #ffffff;
-      stroke-width: 2px;
+      fill: #FF7A00 !important;
+      stroke: #ffffff !important;
+      stroke-width: 2px !important;
     }
 
-    /* Segment Label Inside Wedge Petals */
+    /* Segment Label Inside Wedge Petals - Dark Gray/Black for High Contrast */
     .segment-label {
-      font-size: 13.5px;
-      font-weight: 700;
-      letter-spacing: 0.5px;
-      fill: #f5f5f7;
+      font-size: 11px !important;
+      font-weight: 750 !important;
+      letter-spacing: 0.35px !important;
+      fill: #111111 !important;
       text-anchor: middle;
       dominant-baseline: central;
       pointer-events: none;
-      transition: fill 0.25s ease;
+      transition: fill 0.15s ease;
       will-change: fill;
-      filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.9));
     }
 
     .segment-label.small-text {
-      font-size: 10px;
-      letter-spacing: 0.2px;
+      font-size: 9.5px !important;
+      font-weight: 750 !important;
+      letter-spacing: 0.2px !important;
     }
 
     .petal-group:hover .segment-label,
     .petal-group.active .segment-label {
-      fill: #ffffff;
-      font-weight: 800;
-      filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.8));
+      fill: #ffffff !important;
+      font-weight: 800 !important;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)) !important;
     }
 
-    /* True Glassmorphism Center Circle (Native macOS frosted glass hub) */
+    /* Segment Minimalist Icons Inside Wedge Petals - Dark Gray/Black Contrast */
+    .petal-icon {
+      pointer-events: none;
+      color: #111111 !important;
+      stroke: #111111 !important;
+      fill: none !important;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0.95 !important;
+      transition: color 0.15s ease, opacity 0.15s ease;
+      will-change: color, opacity;
+      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.9));
+    }
+
+    .petal-group:hover .petal-icon,
+    .petal-group.active .petal-icon {
+      color: #ffffff !important;
+      stroke: #ffffff !important;
+      opacity: 1 !important;
+      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)) !important;
+    }
+
+    /* Modern Drop-Target Center Circle (Light Frosted Glass Hub) */
     .center-circle {
       position: absolute;
       top: 50%;
@@ -188,69 +224,137 @@
       width: 132px;
       height: 132px;
       border-radius: 50%;
-      backdrop-filter: blur(25px) !important;
-      -webkit-backdrop-filter: blur(25px) !important;
-      background: rgba(20, 20, 22, 0.82) !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.18) !important;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(25px) saturate(200%) !important;
+      -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
+      background: rgba(255, 255, 255, 0.85) !important;
+      border: 2px dashed rgba(255, 122, 0, 0.5) !important;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       pointer-events: none;
       z-index: 30;
-      padding: 12px;
+      padding: 10px;
       text-align: center;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
-      will-change: transform, opacity, box-shadow;
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform, opacity, box-shadow, border-color;
     }
 
     .center-circle.active {
       transform: translate(-50%, -50%) scale(1.04);
-      border-color: rgba(255, 122, 0, 0.6) !important;
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55), 0 0 24px rgba(255, 85, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25);
+      border-color: #FF7A00 !important;
+      border-style: solid !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.1), 0 0 24px rgba(255, 122, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
+    }
+
+    /* Sleek Drop Target Graphic Inside Center Hub */
+    .drop-zone-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      margin-bottom: 2px;
+      pointer-events: none;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+    }
+
+    .drop-target-svg {
+      width: 26px;
+      height: 26px;
+      overflow: visible;
+    }
+
+    .target-radar-ring {
+      fill: rgba(255, 122, 0, 0.08);
+      stroke: #FF7A00;
+      stroke-width: 1.5px;
+      stroke-dasharray: 4 2.5;
+      opacity: 0.85;
+      transition: stroke-dasharray 0.2s ease, opacity 0.2s ease, fill 0.2s ease;
+    }
+
+    .target-arrow {
+      stroke: #FF7A00;
+      stroke-width: 2px;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      fill: none;
+      transition: transform 0.2s ease;
+    }
+
+    .target-base {
+      stroke: #FF7A00;
+      stroke-width: 2.2px;
+      stroke-linecap: round;
+      fill: none;
+    }
+
+    .center-circle.active .target-radar-ring {
+      stroke-dasharray: none;
+      opacity: 1;
+      fill: rgba(255, 122, 0, 0.16);
+    }
+
+    .center-circle.active .target-arrow {
+      transform: translateY(1.5px);
+    }
+
+    /* Active File Dragging State (macOS Tangerine Drop Focus) */
+    body.dragging-file .center-circle {
+      transform: translate(-50%, -50%) scale(1.06);
+      border-color: #FF7A00 !important;
+      border-style: solid !important;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), 0 0 30px rgba(255, 122, 0, 0.6), inset 0 0 16px rgba(255, 122, 0, 0.2) !important;
+    }
+
+    body.dragging-file .target-radar-ring {
+      stroke-dasharray: none;
+      fill: rgba(255, 122, 0, 0.2);
+      opacity: 1;
+    }
+
+    body.dragging-file .target-arrow {
+      animation: drop-arrow-bounce 0.8s ease-in-out infinite alternate;
+    }
+
+    @keyframes drop-arrow-bounce {
+      0% { transform: translateY(-1px); }
+      100% { transform: translateY(3px); }
     }
 
     .pill-category {
-      font-size: 10px;
-      font-weight: 700;
-      letter-spacing: 1.2px;
+      font-size: 9.5px !important;
+      font-weight: 750 !important;
+      letter-spacing: 1.2px !important;
       text-transform: uppercase;
-      color: #ff7300;
+      color: #FF7A00 !important;
       margin-bottom: 2px;
       line-height: 1;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-      transition: color 0.25s ease;
+      transition: color 0.15s ease;
     }
 
     .pill-action {
-      font-size: 17px;
-      font-weight: 800;
-      letter-spacing: -0.2px;
-      color: #ffffff;
+      font-size: 16px !important;
+      font-weight: 800 !important;
+      letter-spacing: -0.2px !important;
+      color: #111111 !important;
       text-align: center;
       line-height: 1.15;
       max-width: 105px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
-      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6);
-      transition: color 0.25s ease;
+      transition: color 0.15s ease;
     }
 
-    /* Menu Switching Spring Animation */
-    .menu-switching .petal-group {
-      transform: scale(0.92);
-      opacity: 0.72;
-      transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    /* Pampered Spring Pop Animations */
+    /* Spring Pop Animations */
     @keyframes pampered-spring-pop {
       0% { transform: scale(1); }
-      30% { transform: scale(1.16) translateY(-1px); }
-      60% { transform: scale(0.95) translateY(0.5px); }
-      80% { transform: scale(1.03); }
+      30% { transform: scale(1.15) translateY(-1px); }
+      60% { transform: scale(0.96) translateY(0.5px); }
+      80% { transform: scale(1.02); }
       100% { transform: scale(1); }
     }
 
@@ -262,7 +366,7 @@
       100% { transform: rotate(-35deg) scale(1); }
     }
 
-    /* Close Window Button - Dark Frosted Glass */
+    /* Close Window Button - Light Frosted Glass */
     .close-app-btn {
       position: absolute;
       top: 18px;
@@ -275,22 +379,22 @@
       border-radius: 50%;
       backdrop-filter: blur(25px) !important;
       -webkit-backdrop-filter: blur(25px) !important;
-      background: rgba(35, 35, 35, 0.65) !important;
-      border: 1px solid rgba(255, 255, 255, 0.18) !important;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.15);
-      color: #ffffff;
+      background: rgba(255, 255, 255, 0.75) !important;
+      border: 1px solid rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
+      color: #111111 !important;
       cursor: pointer;
       z-index: 100;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
       will-change: transform, background-color, box-shadow;
     }
 
     .close-app-btn:hover {
       transform: scale(1.12) rotate(90deg);
-      background: rgba(255, 59, 48, 0.9) !important;
-      border-color: rgba(255, 255, 255, 0.8) !important;
+      background: rgba(255, 59, 48, 0.95) !important;
+      border-color: rgba(255, 255, 255, 0.95) !important;
       color: #ffffff !important;
-      box-shadow: 0 6px 24px rgba(255, 59, 48, 0.6) !important;
+      box-shadow: 0 6px 20px rgba(255, 59, 48, 0.45) !important;
     }
 
     .close-app-btn:active {
@@ -305,10 +409,9 @@
       stroke-width: 2.4;
       stroke-linecap: round;
       fill: none;
-      transition: transform 0.3s ease;
     }
 
-    /* FLOAT Pin to Top Tool Button - Dark Frosted Glass */
+    /* FLOAT Pin to Top Tool Button - Light Frosted Glass */
     .float-pin-btn {
       position: absolute;
       top: 18px;
@@ -320,26 +423,26 @@
       border-radius: 20px;
       backdrop-filter: blur(25px) !important;
       -webkit-backdrop-filter: blur(25px) !important;
-      background: rgba(35, 35, 35, 0.65) !important;
-      border: 1px solid rgba(255, 255, 255, 0.18) !important;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.15);
-      color: #f5f5f7;
+      background: rgba(255, 255, 255, 0.75) !important;
+      border: 1px solid rgba(255, 255, 255, 0.95) !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
+      color: #111111 !important;
       font-family: inherit;
       font-size: 11px;
       font-weight: 800;
       letter-spacing: 0.6px;
       cursor: pointer;
       z-index: 100;
-      transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
       will-change: transform, box-shadow;
     }
 
     .float-pin-btn:hover {
       transform: scale(1.06) translateY(-1px);
-      background: rgba(55, 55, 55, 0.8) !important;
-      border-color: rgba(255, 255, 255, 0.35) !important;
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45), inset 0 1px 1px rgba(255, 255, 255, 0.25);
-      color: #ffffff;
+      background: rgba(255, 255, 255, 0.95) !important;
+      border-color: rgba(255, 255, 255, 1) !important;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 1);
+      color: #000000 !important;
     }
 
     .float-pin-btn:active {
@@ -353,10 +456,10 @@
 
     .float-pin-btn.active,
     .float-active {
-      background: linear-gradient(135deg, #FF7A00, #FF5100) !important;
-      border-color: rgba(255, 255, 255, 0.8) !important;
+      background: #FF7A00 !important;
+      border-color: rgba(255, 255, 255, 0.95) !important;
       color: #ffffff !important;
-      box-shadow: 0 6px 24px rgba(255, 85, 0, 0.6), inset 0 1px 1.5px rgba(255, 255, 255, 0.4) !important;
+      box-shadow: 0 6px 20px rgba(255, 122, 0, 0.45), inset 0 1px 1.5px rgba(255, 255, 255, 0.5) !important;
     }
 
     .float-pin-btn svg {
@@ -369,21 +472,6 @@
     .float-pin-btn.active svg {
       animation: pampered-pin-wiggle 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
     }
-
-    /* Petal slice active pinned state */
-    .petal-slice.float-active {
-      stroke: #ff5500;
-      stroke-width: 2.6px;
-      fill: rgba(255, 85, 0, 0.28);
-    }
-
-    /* Petal slice active keep awake state */
-    .petal-slice.awake-active {
-      stroke: #ffaa00;
-      stroke-width: 2.6px;
-      fill: rgba(255, 170, 0, 0.35);
-      filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.8));
-    }
   </style>
 </head>
 <body>
@@ -395,6 +483,7 @@
         <line x1="6" y1="6" x2="18" y2="18"></line>
       </svg>
     </button>
+
     <!-- FLOAT Pin to Top Toggle Button -->
     <button id="float-pin-btn" class="float-pin-btn active float-active" title="Pinned to Top (Click to unpin)" aria-pressed="true" onclick="triggerActionIfApplicable('FLOAT')">
       <svg viewBox="0 0 24 24">
@@ -402,96 +491,265 @@
       </svg>
       <span id="float-pin-label">FLOAT</span>
     </button>
+
     <!-- Main Radial Menu Container -->
     <div class="radial-menu main-container" id="radial-menu">
-      <!-- Apple Frosted Glass Donut Platter (backdrop-filter: blur(25px)) -->
+      <!-- Apple Light Frosted Glass Donut Platter -->
       <div class="glass-donut-backdrop"></div>
 
-      <!-- Center Circle: Native macOS frosted glass hub -->
+      <!-- Center Circle: Modern Drop Target Hub -->
       <div class="center-circle center-pill-container center-pill" id="tooltip">
+        <div class="drop-zone-icon" id="drop-zone-icon">
+          <svg class="drop-target-svg" viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="14" class="target-radar-ring" />
+            <path d="M16 8.5v11m0 0l-3.5-3.5m3.5 3.5l3.5-3.5" class="target-arrow" />
+            <path d="M10 22.5h12" class="target-base" />
+          </svg>
+        </div>
         <div class="pill-category" id="tooltip-category">Convert to</div>
         <div class="pill-action" id="tooltip-text">PDF</div>
       </div>
 
-      <!-- SVG Continuous Donut Ring with 10 Seamless Wedge Slices -->
+      <!-- SVG Continuous Donut Ring with 8 Seamless Wedge Slices -->
       <svg class="radial-svg" viewBox="0 0 380 380">
         <defs>
           <linearGradient id="tangerine-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#ff7300" />
-            <stop offset="50%" stop-color="#ff5500" />
-            <stop offset="100%" stop-color="#e64200" />
+            <stop offset="0%" stop-color="#FF9500" />
+            <stop offset="45%" stop-color="#FF7A00" />
+            <stop offset="100%" stop-color="#FF5100" />
           </linearGradient>
+
+          <!-- ── Action & Tool Icons (Shift State) ── -->
+          <symbol id="icon-crop" viewBox="0 0 24 24">
+            <path d="M6 2v14a2 2 0 0 0 2 2h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M18 22V8a2 2 0 0 0-2-2H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-redact" viewBox="0 0 24 24">
+            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-compress" viewBox="0 0 24 24">
+            <path d="M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M12 3v6m0 0l-3.5-3.5m3.5 3.5l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M12 21v-6m0 0l-3.5 3.5m3.5-3.5l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-add-bg" viewBox="0 0 24 24">
+            <rect x="3" y="5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="7" cy="9" r="1.2" fill="currentColor"/>
+            <path d="M3 14l3.5-3 2.5 2 3-3 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M19 3v6 M16 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-watermark" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M7.5 9.5l2 5.5 2.5-4 2.5 4 2-5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-metadata" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="12" cy="8" r="1.2" fill="currentColor"/>
+            <path d="M12 11.5v5.5m-1 0h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-edit" viewBox="0 0 24 24">
+            <line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="4" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <circle cx="9" cy="7" r="2.5" fill="currentColor"/>
+            <circle cx="15" cy="17" r="2.5" fill="currentColor"/>
+          </symbol>
+
+          <symbol id="icon-annotate" viewBox="0 0 24 24">
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M3 22h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </symbol>
+
+          <!-- ── Conversion Format Icons (Default State) ── -->
+          <symbol id="icon-pdf" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <path d="M8 14h2a1.5 1.5 0 0 0 0-3H8v5 M13 11v5 M16 11h2a1.5 1.5 0 0 1 0 3h-2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-docx" viewBox="0 0 24 24">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="8" y1="15" x2="16" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="8" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-png" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <polygon points="12 7 17 12 12 17 7 12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
+            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+          </symbol>
+
+          <symbol id="icon-jpg" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="8.5" cy="8.5" r="1.6" fill="currentColor"/>
+            <path d="M21 15l-5-5L5 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-webp" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="3" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.5"/>
+            <ellipse cx="12" cy="12" rx="4.5" ry="9" stroke="currentColor" stroke-width="1.5" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-heic" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="12" y1="3" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="18.3" y1="7.5" x2="14" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="18.3" y1="16.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="12" y1="21" x2="12" y2="16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="5.7" y1="16.5" x2="10" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="5.7" y1="7.5" x2="10" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-tiff" viewBox="0 0 24 24">
+            <polygon points="12 2 2 7 12 12 22 7 12 2" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <polyline points="2 12 12 17 22 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+            <polyline points="2 17 12 22 22 17" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
+          </symbol>
+
+          <symbol id="icon-avif" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="4.9" y1="4.9" x2="7.1" y2="7.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="16.9" y1="16.9" x2="19.1" y2="19.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="4.9" y1="19.1" x2="7.1" y2="16.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="16.9" y1="7.1" x2="19.1" y2="4.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </symbol>
+
+          <!-- ── Utility Tool Icons (Ctrl State) ── -->
+          <symbol id="icon-airdrop" viewBox="0 0 24 24">
+            <circle cx="12" cy="18" r="1.8" fill="currentColor"/>
+            <path d="M8 14.5a5.5 5.5 0 0 1 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M5 11a10 10 0 0 1 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M2 7.5a14.5 14.5 0 0 1 20 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-ocr" viewBox="0 0 24 24">
+            <path d="M4 8V5a1 1 0 0 1 1-1h3 M16 4h3a1 1 0 0 1 1 1v3 M4 16v3a1 1 0 0 0 1 1h3 M16 20h3a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M9 10h6 M12 10v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-terminal" viewBox="0 0 24 24">
+            <rect x="3" y="4" width="18" height="16" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <polyline points="7 9 11 12 7 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <line x1="13" y1="15" x2="17" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-screenshot" viewBox="0 0 24 24">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2 M17 3h2a2 2 0 0 1 2 2v2 M21 17v2a2 2 0 0 1-2 2h-2 M7 21H5a2 2 0 0 1-2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-color" viewBox="0 0 24 24">
+            <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 4 6.5.5.2.8-.2.8-.5v-1c0-1.7 1.3-3 3-3h1.5c2.5 0 4.5-2 4.5-4.5 0-4.1-3.6-7.5-7.8-7.5z" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="7.5" cy="9.5" r="1.2" fill="currentColor"/>
+            <circle cx="11.5" cy="6.5" r="1.2" fill="currentColor"/>
+            <circle cx="16" cy="8.5" r="1.2" fill="currentColor"/>
+          </symbol>
+
+          <symbol id="icon-keep-awake" viewBox="0 0 24 24">
+            <path d="M17 8h1a3.5 3.5 0 0 1 0 7h-1" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="6" y1="2" x2="6" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="10" y1="2" x2="10" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="14" y1="2" x2="14" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-record" viewBox="0 0 24 24">
+            <rect x="2" y="5" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <polygon points="22 8 16 12 22 16 22 8" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>
+            <circle cx="9" cy="12" r="2.5" fill="currentColor"/>
+          </symbol>
+
+          <symbol id="icon-float" viewBox="0 0 24 24">
+            <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6l1 1 1-1v-6H18v-2l-2-2z" fill="currentColor" stroke="none"/>
+          </symbol>
         </defs>
 
         <!-- Circular Donut Base Track -->
         <circle class="donut-track" cx="190" cy="190" r="124" />
 
-        <!-- 0: PDF (Top / 0°) -->
+        <!-- 0: PDF / CROP / AIRDROP (Top / 0°) -->
         <g id="petal-group-0" class="petal-group action-btn">
-          <path id="slice-0" class="petal-slice petal" data-index="0" data-format="PDF" d="M 167.75 121.52 L 135.61 22.61 A 176.00 176.00 0 0 1 244.39 22.61 L 212.25 121.52 A 72.00 72.00 0 0 0 167.75 121.52 Z" />
-          <text id="label-0" class="segment-label" x="190.00" y="66.00">PDF</text>
-        </g>
-
-        <!-- 1: DOCX (Top-Right / 36°) -->
-        <g id="petal-group-1" class="petal-group action-btn">
-          <path id="slice-1" class="petal-slice petal" data-index="1" data-format="DOCX" d="M 212.25 121.52 L 244.39 22.61 A 176.00 176.00 0 0 1 332.39 86.55 L 248.25 147.68 A 72.00 72.00 0 0 0 212.25 121.52 Z" />
-          <text id="label-1" class="segment-label" x="262.89" y="89.68">DOCX</text>
-        </g>
-
-        <!-- 2: TXT (Right-Top / 72°) -->
-        <g id="petal-group-2" class="petal-group action-btn">
-          <path id="slice-2" class="petal-slice petal" data-index="2" data-format="TXT" d="M 248.25 147.68 L 332.39 86.55 A 176.00 176.00 0 0 1 366.00 190.00 L 262.00 190.00 A 72.00 72.00 0 0 0 248.25 147.68 Z" />
-          <text id="label-2" class="segment-label" x="307.93" y="151.68">TXT</text>
-        </g>
-
-        <!-- 3: JPG (Right-Bottom / 108°) -->
-        <g id="petal-group-3" class="petal-group action-btn">
-          <path id="slice-3" class="petal-slice petal" data-index="3" data-format="JPG" d="M 262.00 190.00 L 366.00 190.00 A 176.00 176.00 0 0 1 332.39 293.45 L 248.25 232.32 A 72.00 72.00 0 0 0 262.00 190.00 Z" />
-          <text id="label-3" class="segment-label" x="307.93" y="228.32">JPG</text>
-        </g>
-
-        <!-- 4: PNG (Bottom-Right / 144°) -->
-        <g id="petal-group-4" class="petal-group action-btn">
-          <path id="slice-4" class="petal-slice petal" data-index="4" data-format="PNG" d="M 248.25 232.32 L 332.39 293.45 A 176.00 176.00 0 0 1 244.39 357.39 L 212.25 258.48 A 72.00 72.00 0 0 0 248.25 232.32 Z" />
-          <text id="label-4" class="segment-label" x="262.89" y="290.32">PNG</text>
-        </g>
-
-        <!-- 5: WEBP (Bottom / 180°) -->
-        <g id="petal-group-5" class="petal-group action-btn">
-          <path id="slice-5" class="petal-slice petal" data-index="5" data-format="WEBP" d="M 212.25 258.48 L 244.39 357.39 A 176.00 176.00 0 0 1 135.61 357.39 L 167.75 258.48 A 72.00 72.00 0 0 0 212.25 258.48 Z" />
-          <text id="label-5" class="segment-label" x="190.00" y="314.00">WEBP</text>
-        </g>
-
-        <!-- 6: HEIC (Bottom-Left / 216°) -->
-        <g id="petal-group-6" class="petal-group action-btn">
-          <path id="slice-6" class="petal-slice petal" data-index="6" data-format="HEIC" d="M 167.75 258.48 L 135.61 357.39 A 176.00 176.00 0 0 1 47.61 293.45 L 131.75 232.32 A 72.00 72.00 0 0 0 167.75 258.48 Z" />
-          <text id="label-6" class="segment-label" x="117.11" y="290.32">HEIC</text>
-        </g>
-
-        <!-- 7: AVIF (Left-Bottom / 252°) -->
-        <g id="petal-group-7" class="petal-group action-btn">
-          <path id="slice-7" class="petal-slice petal" data-index="7" data-format="AVIF" d="M 131.75 232.32 L 47.61 293.45 A 176.00 176.00 0 0 1 14.00 190.00 L 118.00 190.00 A 72.00 72.00 0 0 0 131.75 232.32 Z" />
-          <text id="label-7" class="segment-label" x="72.07" y="228.32">AVIF</text>
-        </g>
-
-        <!-- 8: TIFF (Left-Top / 288°) -->
-        <g id="petal-group-8" class="petal-group action-btn">
-          <path id="slice-8" class="petal-slice petal" data-index="8" data-format="TIFF" d="M 118.00 190.00 L 14.00 190.00 A 176.00 176.00 0 0 1 47.61 86.55 L 131.75 147.68 A 72.00 72.00 0 0 0 118.00 190.00 Z" />
-          <text id="label-8" class="segment-label" x="72.07" y="151.68">TIFF</text>
-        </g>
-
-        <!-- 9: BMP / AI DETECT (Top-Left / 324°) -->
-        <g id="petal-group-9" class="petal-group action-btn">
-          <path id="slice-9" class="petal-slice petal" data-index="9" data-format="BMP" d="M 131.75 147.68 L 47.61 86.55 A 176.00 176.00 0 0 1 135.61 22.61 L 167.75 121.52 A 72.00 72.00 0 0 0 131.75 147.68 Z" />
-          <g id="icon-ai-detect" class="petal-icon" style="display: none; pointer-events: none;" transform="translate(108, 62)">
-            <path d="M2 2h3v1.5H2v3H.5V2A1.5 1.5 0 0 1 2 .5h3V2H2z" fill="#ffffff" opacity="0.95"/>
-            <path d="M16 2h-3V.5h3A1.5 1.5 0 0 1 17.5 2v3H16V2z" fill="#ffffff" opacity="0.95"/>
-            <path d="M17.5 13v3a1.5 1.5 0 0 1-1.5 1.5h-3V16h3v-3h1.5z" fill="#ffffff" opacity="0.95"/>
-            <path d="M2 16h3v1.5H2A1.5 1.5 0 0 1 .5 16v-3H2v3z" fill="#ffffff" opacity="0.95"/>
-            <circle cx="9" cy="9" r="3" fill="none" stroke="#ffffff" stroke-width="1.3"/>
-            <path d="M4 9h2.5 M11.5 9h2.5 M9 4v2.5 M9 11.5v2.5" stroke="#ffffff" stroke-width="1.3" stroke-linecap="round"/>
+          <path id="slice-0" class="petal-slice petal" data-index="0" data-format="PDF" d="M 162.45 123.48 L 122.65 27.40 A 176.00 176.00 0 0 1 257.35 27.40 L 217.55 123.48 A 72.00 72.00 0 0 0 162.45 123.48 Z" />
+          <g id="petal-icon-0" class="petal-icon" transform="translate(190.00, 55.00)">
+            <use id="icon-use-0" href="#icon-pdf" width="20" height="20" x="-10" y="-10" />
           </g>
-          <text id="label-9" class="segment-label" x="117.11" y="89.68">BMP</text>
+          <text id="label-0" class="segment-label" x="190.00" y="77.00">PDF</text>
+        </g>
+
+        <!-- 1: DOCX / REDACT / OCR (Top-Right / 45°) -->
+        <g id="petal-group-1" class="petal-group action-btn">
+          <path id="slice-1" class="petal-slice petal" data-index="1" data-format="DOCX" d="M 217.55 123.48 L 257.35 27.40 A 176.00 176.00 0 0 1 352.60 122.65 L 256.52 162.45 A 72.00 72.00 0 0 0 217.55 123.48 Z" />
+          <g id="petal-icon-1" class="petal-icon" transform="translate(277.68, 91.32)">
+            <use id="icon-use-1" href="#icon-docx" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-1" class="segment-label" x="277.68" y="113.32">DOCX</text>
+        </g>
+
+        <!-- 2: PNG / COMPRESS / TERMINAL (Right / 90°) -->
+        <g id="petal-group-2" class="petal-group action-btn">
+          <path id="slice-2" class="petal-slice petal" data-index="2" data-format="PNG" d="M 256.52 162.45 L 352.60 122.65 A 176.00 176.00 0 0 1 352.60 257.35 L 256.52 217.55 A 72.00 72.00 0 0 0 256.52 162.45 Z" />
+          <g id="petal-icon-2" class="petal-icon" transform="translate(314.00, 179.00)">
+            <use id="icon-use-2" href="#icon-png" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-2" class="segment-label" x="314.00" y="201.00">PNG</text>
+        </g>
+
+        <!-- 3: JPG / ADD BG / SCREENSHOT (Bottom-Right / 135°) -->
+        <g id="petal-group-3" class="petal-group action-btn">
+          <path id="slice-3" class="petal-slice petal" data-index="3" data-format="JPG" d="M 256.52 217.55 L 352.60 257.35 A 176.00 176.00 0 0 1 257.35 352.60 L 217.55 256.52 A 72.00 72.00 0 0 0 256.52 217.55 Z" />
+          <g id="petal-icon-3" class="petal-icon" transform="translate(277.68, 266.68)">
+            <use id="icon-use-3" href="#icon-jpg" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-3" class="segment-label" x="277.68" y="288.68">JPG</text>
+        </g>
+
+        <!-- 4: WEBP / WATERMARK / COLOR (Bottom / 180°) -->
+        <g id="petal-group-4" class="petal-group action-btn">
+          <path id="slice-4" class="petal-slice petal" data-index="4" data-format="WEBP" d="M 217.55 256.52 L 257.35 352.60 A 176.00 176.00 0 0 1 122.65 352.60 L 162.45 256.52 A 72.00 72.00 0 0 0 217.55 256.52 Z" />
+          <g id="petal-icon-4" class="petal-icon" transform="translate(190.00, 303.00)">
+            <use id="icon-use-4" href="#icon-webp" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-4" class="segment-label" x="190.00" y="325.00">WEBP</text>
+        </g>
+
+        <!-- 5: HEIC / METADATA / KEEP AWAKE (Bottom-Left / 225°) -->
+        <g id="petal-group-5" class="petal-group action-btn">
+          <path id="slice-5" class="petal-slice petal" data-index="5" data-format="HEIC" d="M 162.45 256.52 L 122.65 352.60 A 176.00 176.00 0 0 1 27.40 257.35 L 123.48 217.55 A 72.00 72.00 0 0 0 162.45 256.52 Z" />
+          <g id="petal-icon-5" class="petal-icon" transform="translate(102.32, 266.68)">
+            <use id="icon-use-5" href="#icon-heic" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-5" class="segment-label" x="102.32" y="288.68">HEIC</text>
+        </g>
+
+        <!-- 6: TIFF / EDIT / RECORD (Left / 270°) -->
+        <g id="petal-group-6" class="petal-group action-btn">
+          <path id="slice-6" class="petal-slice petal" data-index="6" data-format="TIFF" d="M 123.48 217.55 L 27.40 257.35 A 176.00 176.00 0 0 1 27.40 122.65 L 123.48 162.45 A 72.00 72.00 0 0 0 123.48 217.55 Z" />
+          <g id="petal-icon-6" class="petal-icon" transform="translate(66.00, 179.00)">
+            <use id="icon-use-6" href="#icon-tiff" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-6" class="segment-label" x="66.00" y="201.00">TIFF</text>
+        </g>
+
+        <!-- 7: AVIF / ANNOTATE / FLOAT (Top-Left / 315°) -->
+        <g id="petal-group-7" class="petal-group action-btn">
+          <path id="slice-7" class="petal-slice petal" data-index="7" data-format="AVIF" d="M 123.48 162.45 L 27.40 122.65 A 176.00 176.00 0 0 1 122.65 27.40 L 162.45 123.48 A 72.00 72.00 0 0 0 123.48 162.45 Z" />
+          <g id="petal-icon-7" class="petal-icon" transform="translate(102.32, 91.32)">
+            <use id="icon-use-7" href="#icon-avif" width="20" height="20" x="-10" y="-10" />
+          </g>
+          <text id="label-7" class="segment-label" x="102.32" y="113.32">AVIF</text>
         </g>
       </svg>
     </div>
@@ -504,50 +762,27 @@
     window.isFloating = true;
 
     /**
-     * Updates the UI visual state of the FLOAT button and petal.
+     * Updates the UI visual state of the FLOAT button.
      */
     function updateFloatVisualState() {
       const pinBtn = document.getElementById('float-pin-btn');
       if (pinBtn) {
-        // Trigger pampered bounce animation
         pinBtn.classList.remove('pampered-bump');
         void pinBtn.offsetWidth;
         pinBtn.classList.add('pampered-bump');
 
         if (window.isFloating) {
-          pinBtn.classList.add('active');
-          pinBtn.classList.add('float-active');
+          pinBtn.classList.add('active', 'float-active');
           pinBtn.setAttribute('title', 'Pinned to Top (Click to unpin)');
           pinBtn.setAttribute('aria-pressed', 'true');
         } else {
-          pinBtn.classList.remove('active');
-          pinBtn.classList.remove('float-active');
+          pinBtn.classList.remove('active', 'float-active');
           pinBtn.setAttribute('title', 'Click to Pin to Top');
           pinBtn.setAttribute('aria-pressed', 'false');
         }
       }
-
-      // Update petal slice 1 if currently in SHIFT menu
-      const slice1 = document.getElementById('slice-1');
-      const label1 = document.getElementById('label-1');
-      if (currentModifier === 'SHIFT') {
-        if (slice1) {
-          if (window.isFloating) {
-            slice1.classList.add('float-active');
-          } else {
-            slice1.classList.remove('float-active');
-          }
-        }
-        if (label1) {
-          label1.textContent = window.isFloating ? 'FLOAT 📌' : 'FLOAT';
-        }
-      }
     }
 
-    /**
-     * Called from Python backend to synchronize pin-to-top floating state.
-     * @param {boolean} floating
-     */
     window.setFloatState = function(floating) {
       window.isFloating = Boolean(floating);
       updateFloatVisualState();
@@ -555,105 +790,103 @@
 
     window.isKeepAwake = false;
 
-    function updateKeepAwakeVisualState() {
-      const slice6 = document.getElementById('slice-6');
-      const label6 = document.getElementById('label-6');
-      if (currentModifier === 'SHIFT') {
-        if (slice6) {
-          if (window.isKeepAwake) {
-            slice6.classList.add('awake-active');
-            slice6.style.fill = '#ffaa00';
-            slice6.style.stroke = '#ffffff';
-            slice6.style.strokeWidth = '2px';
-            slice6.style.filter = 'drop-shadow(0 0 12px rgba(255, 170, 0, 0.9))';
-          } else {
-            slice6.classList.remove('awake-active');
-            slice6.style.fill = '';
-            slice6.style.stroke = '';
-            slice6.style.strokeWidth = '';
-            slice6.style.filter = '';
-          }
-        }
-        if (label6) {
-          label6.textContent = window.isKeepAwake ? 'AWAKE ☕' : 'KEEP AWAKE';
-        }
-      }
-    }
-
     window.setKeepAwakeState = function(awake) {
       window.isKeepAwake = Boolean(awake);
-      updateKeepAwakeVisualState();
     };
 
-    // Three UI States matching Tangerine macOS app
-    const defaultState = [
-      "PDF", "DOCX", "TXT", "JPG", "PNG", "WEBP", "HEIC", "AVIF", "TIFF", "BMP"
-    ];
-    const ctrlCmdState = [
-      "COMPRESS", "CROP", "REDACT", "ADD BG", "METADATA", "EDIT", "ANNOTATE", "WATERMARK", "OCR", "AI DETECT"
-    ];
-    const shiftState = [
-      "AIRDROP", "FLOAT", "COPY PATH", "TERMINAL", "SCREENSHOT", "COLOR", "KEEP AWAKE", "RECORD", "TIMER", "CALC"
+    // ── Tangerine 3 Menus: Default Formats, Shift Tools, Control Utilities ──
+    const DEFAULT_FORMATS = [
+      "PDF", "DOCX", "PNG", "JPG", "WEBP", "HEIC", "TIFF", "AVIF"
     ];
 
-    const MENUS = {
-      DEFAULT: defaultState,
-      CTRL: ctrlCmdState,
-      META: ctrlCmdState,
-      CMD: ctrlCmdState,
-      SHIFT: shiftState
+    const SHIFT_TOOLS = [
+      "CROP", "REDACT", "COMPRESS", "ADD BG", "WATERMARK", "METADATA", "EDIT", "ANNOTATE"
+    ];
+
+    const CTRL_TOOLS = [
+      "AIRDROP", "OCR", "TERMINAL", "SCREENSHOT", "COLOR", "KEEP AWAKE", "RECORD", "FLOAT"
+    ];
+
+    // Action-to-Icon identifier dictionary
+    const ACTION_ICONS = {
+      // Conversion Formats (DEFAULT State)
+      "PDF": "icon-pdf",
+      "DOCX": "icon-docx",
+      "PNG": "icon-png",
+      "JPG": "icon-jpg",
+      "WEBP": "icon-webp",
+      "HEIC": "icon-heic",
+      "TIFF": "icon-tiff",
+      "AVIF": "icon-avif",
+
+      // Action Tools (Shift State)
+      "CROP": "icon-crop",
+      "REDACT": "icon-redact",
+      "COMPRESS": "icon-compress",
+      "ADD BG": "icon-add-bg",
+      "WATERMARK": "icon-watermark",
+      "METADATA": "icon-metadata",
+      "EDIT": "icon-edit",
+      "ANNOTATE": "icon-annotate",
+
+      // Utility Tools (Ctrl State)
+      "AIRDROP": "icon-airdrop",
+      "OCR": "icon-ocr",
+      "TERMINAL": "icon-terminal",
+      "SCREENSHOT": "icon-screenshot",
+      "COLOR": "icon-color",
+      "KEEP AWAKE": "icon-keep-awake",
+      "AWAKE ☕": "icon-keep-awake",
+      "RECORD": "icon-record",
+      "FLOAT": "icon-float",
+      "FLOAT 📌": "icon-float"
     };
 
     let currentModifier = 'DEFAULT';
     let currentHoverIndex = -1;
     let isFileDragging = false;
-    let isCtrlPressed = false;
-    let isShiftPressed = false;
 
     /**
-     * Resets the center circle text to idle state based on active modifier.
+     * Resets the center circle text based on active modifier.
      */
     function resetTooltipText() {
       if (window.isProcessing) return;
       const tooltipText = document.getElementById('tooltip-text');
       const tooltipCategory = document.getElementById('tooltip-category');
       if (tooltipCategory) {
-        if (currentModifier === 'DEFAULT') {
-          tooltipCategory.textContent = 'Convert to';
-        } else if (currentModifier === 'SHIFT') {
+        if (currentModifier === 'SHIFT') {
+          tooltipCategory.textContent = 'Tool';
+        } else if (currentModifier === 'CTRL') {
           tooltipCategory.textContent = 'Utility';
         } else {
-          tooltipCategory.textContent = 'Action';
+          tooltipCategory.textContent = 'Convert to';
         }
       }
       if (tooltipText) {
-        tooltipText.textContent = currentModifier === 'DEFAULT' ? 'PDF' : MENUS[currentModifier][0];
+        if (currentModifier === 'SHIFT') {
+          tooltipText.textContent = SHIFT_TOOLS[0];
+        } else if (currentModifier === 'CTRL') {
+          tooltipText.textContent = CTRL_TOOLS[0];
+        } else {
+          tooltipText.textContent = DEFAULT_FORMATS[0];
+        }
       }
     }
 
     /**
-     * Updates petal text and data-format attributes across all slices.
-     * Triggers a subtle macOS spring bounce on modifier change.
-     * @param {string[]} stateArray - Array of 10 action strings
-     * @param {string} [modifierName] - 'DEFAULT' | 'CTRL' | 'SHIFT'
+     * Updates petal text and data-format attributes across all 8 slices instantly.
+     * @param {string[]} stateArray - Array of 8 action strings
+     * @param {string} [modifierName] - 'DEFAULT' | 'SHIFT' | 'CTRL'
      */
     function applyPetalsState(stateArray, modifierName) {
       if (modifierName) {
         currentModifier = modifierName;
       }
 
-      // Trigger 60fps spring pop animation on menu switching
-      const menu = document.getElementById('radial-menu');
-      if (menu) {
-        menu.classList.add('menu-switching');
-        setTimeout(() => {
-          menu.classList.remove('menu-switching');
-        }, 350);
-      }
-
       stateArray.forEach((action, index) => {
         const slice = document.getElementById(`slice-${index}`);
         const label = document.getElementById(`label-${index}`);
+        const iconUse = document.getElementById(`icon-use-${index}`);
 
         if (slice) {
           slice.setAttribute('data-format', action);
@@ -668,24 +901,13 @@
             label.classList.remove('small-text');
           }
         }
-      });
 
-      // Synchronize float visual state on petals
-      updateFloatVisualState();
-      updateKeepAwakeVisualState();
-
-      // Synchronize AI DETECT icon
-      const aiIcon = document.getElementById('icon-ai-detect');
-      const label9 = document.getElementById('label-9');
-      if (aiIcon && label9) {
-        if (stateArray[9] === 'AI DETECT') {
-          aiIcon.style.display = 'block';
-          label9.setAttribute('y', '96');
-        } else {
-          aiIcon.style.display = 'none';
-          label9.setAttribute('y', '89.68');
+        if (iconUse) {
+          const iconId = ACTION_ICONS[action] || 'icon-pdf';
+          iconUse.setAttribute('href', `#${iconId}`);
+          iconUse.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${iconId}`);
         }
-      }
+      });
 
       // Update center circle dynamically
       if (currentHoverIndex >= 0 && currentHoverIndex < stateArray.length) {
@@ -716,17 +938,17 @@
         tooltipText.textContent = currentText;
       }
       if (tooltipCategory) {
-        if (currentModifier === 'DEFAULT') {
-          tooltipCategory.textContent = 'Convert to';
-        } else if (currentModifier === 'SHIFT') {
+        if (currentModifier === 'SHIFT') {
+          tooltipCategory.textContent = 'Tool';
+        } else if (currentModifier === 'CTRL') {
           tooltipCategory.textContent = 'Utility';
         } else {
-          tooltipCategory.textContent = 'Action';
+          tooltipCategory.textContent = 'Convert to';
         }
       }
     }
 
-    // ── Premium Acoustic Feedback (Web Audio API Synthesizer) ──
+    // ── Tactile Acoustic Feedback (Web Audio API) ──
     let audioCtx = null;
 
     function getAudioContext() {
@@ -742,7 +964,6 @@
       return audioCtx;
     }
 
-    // Pre-unlock audio context on user gesture to eliminate any audio latency
     ['mousedown', 'mousemove', 'keydown', 'touchstart'].forEach((evt) => {
       window.addEventListener(evt, () => {
         try {
@@ -754,68 +975,41 @@
       }, { once: true, passive: true });
     });
 
-    /**
-     * Synthesizes an ultra-subtle, tactile mechanical tick (watch escapement / luxury dial feel).
-     * Zero audio asset latency, pure mathematical audio synthesis.
-     */
     function playDialTick() {
       try {
         const ctx = getAudioContext();
         if (!ctx) return;
-        if (ctx.state === 'suspended') {
-          ctx.resume();
-        }
+        if (ctx.state === 'suspended') ctx.resume();
 
         const t = ctx.currentTime;
-
-        // Layer 1: High transient mechanical click snap (triangle wave, rapid pitch sweep)
         const oscClick = ctx.createOscillator();
         const gainClick = ctx.createGain();
         oscClick.type = 'triangle';
-        oscClick.frequency.setValueAtTime(2400, t);
-        oscClick.frequency.exponentialRampToValueAtTime(700, t + 0.008);
+        oscClick.frequency.setValueAtTime(2600, t);
+        oscClick.frequency.exponentialRampToValueAtTime(750, t + 0.008);
 
         gainClick.gain.setValueAtTime(0.04, t);
         gainClick.gain.exponentialRampToValueAtTime(0.0001, t + 0.008);
 
         oscClick.connect(gainClick);
         gainClick.connect(ctx.destination);
-
         oscClick.start(t);
         oscClick.stop(t + 0.009);
-
-        // Layer 2: Subtle acoustic body damping (sine wave, mechanical precision resonance)
-        const oscBody = ctx.createOscillator();
-        const gainBody = ctx.createGain();
-        oscBody.type = 'sine';
-        oscBody.frequency.setValueAtTime(1300, t);
-        oscBody.frequency.exponentialRampToValueAtTime(350, t + 0.013);
-
-        gainBody.gain.setValueAtTime(0.03, t);
-        gainBody.gain.exponentialRampToValueAtTime(0.0001, t + 0.013);
-
-        oscBody.connect(gainBody);
-        gainBody.connect(ctx.destination);
-
-        oscBody.start(t);
-        oscBody.stop(t + 0.014);
-      } catch (_) {
-        // Safe no-op if audio context is blocked or unavailable
-      }
+      } catch (_) {}
     }
 
     /**
-     * Activates a petal with spring physics, scale(1.08), and vibrant tangerine shift.
+     * Activates a petal with scale and vibrant Tangerine highlight.
      * @param {number} index
      */
     function setActivePetal(index) {
       if (index === currentHoverIndex) return;
-      if (index >= 0 && index < 10) {
+      if (index >= 0 && index < 8) {
         playDialTick();
       }
       currentHoverIndex = index;
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 8; i++) {
         const group = document.getElementById(`petal-group-${i}`);
         const slice = document.getElementById(`slice-${i}`);
         const label = document.getElementById(`label-${i}`);
@@ -839,23 +1033,25 @@
     }
 
     /**
-     * Switching Logic for Python interop: updates petal states and modifiers.
-     * @param {string} modifier - 'DEFAULT' | 'CTRL' | 'META' | 'CMD' | 'SHIFT'
+     * Menu Switching for Python backend and JS event interop.
+     * @param {string} modifier - 'DEFAULT' | 'SHIFT' | 'CTRL' | 'META' | 'ALT'
      */
-    window.switchMenu = function(modifier) {
+    window.switchMenu = function(modifier, force) {
       const mod = (modifier || 'DEFAULT').toUpperCase();
+      if (mod === currentModifier && !force) return;
+      currentModifier = mod;
+
       if (mod === 'SHIFT') {
-        applyPetalsState(shiftState, 'SHIFT');
-      } else if (mod === 'CTRL' || mod === 'META' || mod === 'CMD') {
-        applyPetalsState(ctrlCmdState, 'CTRL');
+        applyPetalsState(SHIFT_TOOLS, 'SHIFT');
+      } else if (mod === 'CTRL' || mod === 'META' || mod === 'CMD' || mod === 'ALT') {
+        applyPetalsState(CTRL_TOOLS, 'CTRL');
       } else {
-        applyPetalsState(defaultState, 'DEFAULT');
+        applyPetalsState(DEFAULT_FORMATS, 'DEFAULT');
       }
     };
 
     /**
-     * Updates hover state, highlights active petal with scale(1.08) & vibrant Tangerine,
-     * and springs center frosted glass circle.
+     * Updates hover state across the 8 sectors.
      * @param {number} x - Cursor X coordinate (window space)
      * @param {number} y - Cursor Y coordinate (window space)
      */
@@ -871,8 +1067,8 @@
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
 
-      // Inner hole: 66px radius | Outer radius: 182px radius
-      if (dist < 66 || dist > 182) {
+      // Inner hole: 68px radius | Outer radius: 180px radius
+      if (dist < 68 || dist > 180) {
         window.clearHover();
         return;
       }
@@ -881,21 +1077,21 @@
       const rad = Math.atan2(dy, dx);
       const deg = (rad * 180 / Math.PI + 90 + 360) % 360;
 
-      // 10 sectors (36 deg each, centered at 0, 36, 72, 108, 144, 180, 216, 252, 288, 324 deg)
-      const index = Math.floor(((deg + 18) % 360) / 36);
+      // 8 sectors (45 deg each, centered at 0, 45, 90, 135, 180, 225, 270, 315 deg)
+      const index = Math.floor(((deg + 22.5) % 360) / 45);
 
       setActivePetal(index);
     };
 
     /**
-     * Clears all petal highlights and resets center hub with spring transition.
+     * Clears all petal highlights and resets center drop hub.
      */
     window.clearHover = function() {
       window.currentHoveredAction = null;
       if (currentHoverIndex === -1) return;
       currentHoverIndex = -1;
 
-      for (let i = 0; i < 10; i++) {
+      for (let i = 0; i < 8; i++) {
         const group = document.getElementById(`petal-group-${i}`);
         const slice = document.getElementById(`slice-${i}`);
         const label = document.getElementById(`label-${i}`);
@@ -911,7 +1107,35 @@
       resetTooltipText();
     };
 
-    // Initialize QWebChannel bridge to Python backend
+    // ── Robust Modifier Keys Listener (Shift, Control, Alt, Meta) ──
+    function handleModifierKeyEvent(e) {
+      if (e.shiftKey || (e.type === 'keydown' && e.key === 'Shift')) {
+        window.switchMenu('SHIFT');
+      } else if (e.ctrlKey || e.altKey || e.metaKey || (e.type === 'keydown' && (e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta'))) {
+        window.switchMenu('CTRL');
+      } else {
+        window.switchMenu('DEFAULT');
+      }
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (e.repeat) return;
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+        handleModifierKeyEvent(e);
+      }
+    }, true);
+
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
+        handleModifierKeyEvent(e);
+      }
+    }, true);
+
+    window.addEventListener('blur', () => {
+      window.switchMenu('DEFAULT');
+    });
+
+    // ── QWebChannel Bridge to Python Backend ──
     var backend = null;
     window.backend = null;
     function initWebChannel() {
@@ -959,7 +1183,6 @@
 
       if (act.startsWith('FLOAT') || act === 'PIN') {
         const nextState = !window.isFloating;
-        // Pampered immediate tactile UI feedback
         window.isFloating = nextState;
         updateFloatVisualState();
 
@@ -977,7 +1200,6 @@
       if (act.startsWith('KEEP AWAKE') || act.startsWith('KEEP_AWAKE') || act.startsWith('AWAKE') || act === 'KEEPAWAKE') {
         const nextState = !window.isKeepAwake;
         window.isKeepAwake = nextState;
-        updateKeepAwakeVisualState();
 
         const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
         if (b && typeof b.toggleKeepAwake === 'function') {
@@ -1012,28 +1234,6 @@
         return;
       }
 
-      if (act === 'AI DETECT' || act === 'AI_DETECT' || act === 'AIDETECT') {
-        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-        if (b && typeof b.open_file_dialog === 'function') {
-          b.open_file_dialog('AI DETECT');
-        } else if (b && typeof b.trigger_action === 'function') {
-          b.trigger_action('AI DETECT');
-        } else {
-          document.title = 'quickdrop:action:AI DETECT:' + Date.now();
-        }
-        return;
-      }
-
-      if (act === 'SCREENSHOT' || act === 'CALC' || act === 'TIMER' || act === 'RECORD' || act === 'TERMINAL') {
-        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-        if (b && typeof b.trigger_action === 'function') {
-          b.trigger_action(act);
-        } else {
-          document.title = 'quickdrop:action:' + act + ':' + Date.now();
-        }
-        return;
-      }
-
       const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
       if (b && typeof b.open_file_dialog === 'function') {
         b.open_file_dialog(act);
@@ -1045,14 +1245,14 @@
     }
     window.triggerAction = triggerActionIfApplicable;
 
-    // Polyfill .click() on SVG elements for programmatic triggering
+    // Polyfill .click() on SVG elements
     if (typeof SVGElement !== 'undefined' && !SVGElement.prototype.click) {
       SVGElement.prototype.click = function() {
         this.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
       };
     }
 
-    // ── Bulletproof Window Dragging (JS-to-Python Coordinate Bridge) ──
+    // ── Window Dragging Bridge (JS to Python) ──
     let isDraggingWindow = false;
 
     document.addEventListener('mousedown', (e) => {
@@ -1061,7 +1261,9 @@
                               e.target.closest('.petal-group') ||
                               e.target.closest('.petal-slice') ||
                               e.target.closest('.petal') ||
-                              e.target.closest('.segment-label');
+                              e.target.closest('.segment-label') ||
+                              e.target.closest('.petal-icon') ||
+                              e.target.closest('#tooltip');
         if (!isInteractive) {
             isDraggingWindow = true;
             const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
@@ -1093,10 +1295,9 @@
         }
     });
 
-    // Standard in-page mouse and petal interaction
-    for (let i = 0; i < 10; i++) {
+    // Petal interactive click & hover handlers
+    for (let i = 0; i < 8; i++) {
       const group = document.getElementById(`petal-group-${i}`);
-      const slice = document.getElementById(`slice-${i}`);
       const handlePetalClick = (e) => {
         if (e) {
           if (e.stopPropagation) e.stopPropagation();
@@ -1136,60 +1337,25 @@
       window.clearHover();
     });
 
-    // Global keyboard listeners: Control and Shift act as TOGGLES, Space resets to Default
-    window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
-
-      if (e.code === 'Space' || e.key === ' ' || e.key === 'Spacebar') {
-        e.preventDefault();
-        applyPetalsState(defaultState, 'DEFAULT');
-        return;
-      }
-
-      if (e.key === 'Control' || e.key === 'Meta') {
-        if (currentModifier === 'CTRL') {
-          applyPetalsState(defaultState, 'DEFAULT');
-        } else {
-          applyPetalsState(ctrlCmdState, 'CTRL');
-        }
-        return;
-      }
-
-      if (e.key === 'Shift') {
-        if (currentModifier === 'SHIFT') {
-          applyPetalsState(defaultState, 'DEFAULT');
-        } else {
-          applyPetalsState(shiftState, 'SHIFT');
-        }
-        return;
-      }
-    });
-
-    // Remove keyup resets for Ctrl/Shift (toggles stay active until toggled or Space pressed)
-    window.addEventListener('keyup', (e) => {
-      // Intentionally empty: no keyup resets for Ctrl or Shift
-    });
-
-    // Window blur listener: do NOT reset toggled modifier menus on blur
-    window.addEventListener('blur', () => {
-      // Toggle state persists across window blur and app focus transitions
-    });
-
-    // ── Drag & Drop Event Listeners (OS file drag-over preserves toggled menus) ──
+    // ── Drag & Drop Event Listeners ──
     const handleDragEnter = (e) => {
       e.preventDefault();
       isFileDragging = true;
+      document.body.classList.add('dragging-file');
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
       }
+      handleModifierKeyEvent(e);
     };
 
     const handleDragOver = (e) => {
       e.preventDefault();
       isFileDragging = true;
+      document.body.classList.add('dragging-file');
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
       }
+      handleModifierKeyEvent(e);
       if (e.clientX !== undefined && e.clientY !== undefined) {
         window.updateHover(e.clientX, e.clientY);
       }
@@ -1199,14 +1365,18 @@
       e.preventDefault();
       if (!e.relatedTarget || e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
         isFileDragging = false;
+        document.body.classList.remove('dragging-file');
         window.clearHover();
+        window.switchMenu('DEFAULT');
       }
     };
 
     const handleDrop = (e) => {
       e.preventDefault();
       isFileDragging = false;
+      document.body.classList.remove('dragging-file');
       window.clearHover();
+      window.switchMenu('DEFAULT');
     };
 
     window.addEventListener('dragenter', handleDragEnter, false);
@@ -1220,4 +1390,4 @@
     document.addEventListener('drop', handleDrop, false);
   </script>
 </body>
-</html>
+</html>\n

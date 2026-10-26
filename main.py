@@ -7493,6 +7493,13 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def dragMoveEvent(self, event) -> None:  # noqa: N802
         if event.mimeData().hasUrls():
             event.acceptProposedAction()
+            mods = QApplication.keyboardModifiers()
+            if mods & Qt.KeyboardModifier.ShiftModifier:
+                self._sync_modifier("SHIFT")
+            elif mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier):
+                self._sync_modifier("CTRL")
+            else:
+                self._sync_modifier("DEFAULT")
             pos = event.position()
             self.page().runJavaScript(
                 f"window.updateHover({pos.x()}, {pos.y()});"
@@ -7501,6 +7508,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             event.ignore()
 
     def dragLeaveEvent(self, event) -> None:  # noqa: N802
+        self._sync_modifier("DEFAULT")
         self.page().runJavaScript("window.clearHover();")
         event.accept()
 
@@ -7512,6 +7520,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         for path in file_paths:
             print(f"ACTION: {action_name} | FILE: {path}")
         self.page().runJavaScript("window.clearHover();")
+        self._sync_modifier("DEFAULT")
 
         act_upper = action_name.strip().upper()
 
@@ -8382,17 +8391,14 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             event.accept()
             return
 
-        # Control toggles between CTRL and DEFAULT
-        if event.key() == Qt.Key.Key_Control:
-            new_mod = "DEFAULT" if self._current_modifier == "CTRL" else "CTRL"
-            self._sync_modifier(new_mod, force=True)
+        # Modifier keys: Hold Shift for tools, Control/Alt/Meta for utilities
+        if event.key() == Qt.Key.Key_Shift:
+            self._sync_modifier("SHIFT", force=True)
             event.accept()
             return
 
-        # Shift toggles between SHIFT and DEFAULT
-        if event.key() == Qt.Key.Key_Shift:
-            new_mod = "DEFAULT" if self._current_modifier == "SHIFT" else "SHIFT"
-            self._sync_modifier(new_mod, force=True)
+        if event.key() in (Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+            self._sync_modifier("CTRL", force=True)
             event.accept()
             return
 
@@ -8410,7 +8416,21 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         super().keyPressEvent(event)
 
     def keyReleaseEvent(self, event) -> None:  # noqa: N802
-        # Toggles persist on release; do not reset to DEFAULT
+        if event.isAutoRepeat():
+            event.ignore()
+            return
+
+        if event.key() in (Qt.Key.Key_Shift, Qt.Key.Key_Control, Qt.Key.Key_Alt, Qt.Key.Key_Meta):
+            mods = QApplication.keyboardModifiers()
+            if mods & Qt.KeyboardModifier.ShiftModifier:
+                self._sync_modifier("SHIFT", force=True)
+            elif mods & (Qt.KeyboardModifier.ControlModifier | Qt.KeyboardModifier.AltModifier):
+                self._sync_modifier("CTRL", force=True)
+            else:
+                self._sync_modifier("DEFAULT", force=True)
+            event.accept()
+            return
+
         super().keyReleaseEvent(event)
 
     # ── System Tray Integration ────────────────────────────────────
