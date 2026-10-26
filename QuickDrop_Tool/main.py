@@ -7,11 +7,18 @@ if sys.platform.startswith('linux'):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 import ast
+import http.server
+import io
 import math
+import mimetypes
 import operator as _py_op
 import shutil
+import socket
 import subprocess
 import time
+import urllib.parse
+
+import qrcode
 
 try:
     from PyQt5.QtGui import QCursor
@@ -6030,6 +6037,493 @@ class RecordDialog(QDialog):
         super().reject()
 
 
+def _get_local_lan_ip() -> str:
+    """Dynamically determine the active outbound LAN IP address without external network calls."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+    except Exception:
+        try:
+            ip = socket.gethostbyname(socket.gethostname())
+        except Exception:
+            ip = "127.0.0.1"
+    finally:
+        s.close()
+    return ip
+
+
+class _SingleFileHTTPHandler(http.server.BaseHTTPRequestHandler):
+    """Minimal HTTP handler to serve a single shared file with proper download headers."""
+
+    file_path: str = ""
+
+    def log_message(self, format, *args):
+        pass
+
+    def do_GET(self):
+        if not self.file_path or not os.path.isfile(self.file_path):
+            self.send_error(404, "File Not Found")
+            return
+
+        filename = os.path.basename(self.file_path)
+        encoded_filename = urllib.parse.quote(filename)
+        mime_type, _ = mimetypes.guess_type(self.file_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+
+        try:
+            file_size = os.path.getsize(self.file_path)
+            self.send_response(200)
+            self.send_header("Content-Type", mime_type)
+            self.send_header("Content-Length", str(file_size))
+            self.send_header(
+                "Content-Disposition",
+                f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}',
+            )
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+
+            with open(self.file_path, "rb") as f:
+                shutil.copyfileobj(f, self.wfile)
+        except Exception:
+            pass
+
+    def do_HEAD(self):
+        if not self.file_path or not os.path.isfile(self.file_path):
+            self.send_error(404, "File Not Found")
+            return
+        filename = os.path.basename(self.file_path)
+        encoded_filename = urllib.parse.quote(filename)
+        mime_type, _ = mimetypes.guess_type(self.file_path)
+        if not mime_type:
+            mime_type = "application/octet-stream"
+        file_size = os.path.getsize(self.file_path)
+        self.send_response(200)
+        self.send_header("Content-Type", mime_type)
+        self.send_header("Content-Length", str(file_size))
+        self.send_header(
+            "Content-Disposition",
+            f'attachment; filename="{filename}"; filename*=UTF-8\'\'{encoded_filename}',
+        )
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+
+class LocalShareWorker(QThread):
+    """Background worker hosting a local HTTP server on an available port to share a specific file."""
+
+    server_started = pyqtSignal(str, int, str)
+    server_error = pyqtSignal(str)
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = os.path.abspath(file_path)
+        self.local_ip = _get_local_lan_ip()
+        self.port: int = 0
+        self.share_url: str = ""
+        self.server: http.server.ThreadingHTTPServer | None = None
+
+        try:
+            handler_cls = type(
+                "_FileHandler",
+                (_SingleFileHTTPHandler,),
+                {"file_path": self.file_path},
+            )
+            self.server = http.server.ThreadingHTTPServer(("0.0.0.0", 0), handler_cls)
+            self.port = self.server.server_address[1]
+            filename = os.path.basename(self.file_path)
+            encoded_name = urllib.parse.quote(filename)
+            self.share_url = f"http://{self.local_ip}:{self.port}/{encoded_name}"
+        except Exception as exc:
+            print(f"[QuickDrop AirDrop] Init error: {exc}")
+
+    def run(self) -> None:
+        if not self.server:
+            self.server_error.emit("Failed to initialize HTTP server socket")
+            return
+
+        try:
+            print(f"[QuickDrop AirDrop] Serving on {self.share_url}")
+            self.server_started.emit(self.local_ip, self.port, self.share_url)
+            self.server.serve_forever()
+        except Exception as exc:
+            print(f"[QuickDrop AirDrop] Server loop exception: {exc}")
+            self.server_error.emit(str(exc))
+        finally:
+            if self.server:
+                try:
+                    self.server.server_close()
+                except Exception:
+                    pass
+
+    def stop(self) -> None:
+        """Gracefully shut down the HTTP server and release port."""
+        if self.server:
+            try:
+                self.server.shutdown()
+                self.server.server_close()
+            except Exception:
+                pass
+            self.server = None
+
+
+def _generate_qr_pixmap(data_text: str, size: int = 200) -> QPixmap:
+    """Generate a high-contrast QR code QPixmap for the given URL/text."""
+    try:
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_M,
+            box_size=8,
+            border=2,
+        )
+        qr.add_data(data_text)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="#1e293b", back_color="#ffffff")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        qimg = QImage.fromData(buf.getvalue())
+        pixmap = QPixmap.fromImage(qimg)
+        return pixmap.scaled(
+            size,
+            size,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+    except Exception as exc:
+        print(f"[QuickDrop AirDrop] QR code generation error: {exc}")
+        fallback = QPixmap(size, size)
+        fallback.fill(QColor("#f1f5f9"))
+        return fallback
+
+
+class ShareDialog(QDialog):
+    """Frameless modern light-themed dialog for AirDrop / Local LAN file sharing via QR code and URL."""
+
+    def __init__(self, file_path: str, parent=None) -> None:
+        super().__init__(parent)
+        self.file_path = os.path.abspath(file_path)
+        self._drag_start_pos = None
+
+        self.setWindowFlags(
+            Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.Dialog
+            | Qt.WindowType.WindowStaysOnTopHint
+        )
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        self.setFixedWidth(410)
+
+        # Initialize local file share worker
+        self.worker = LocalShareWorker(self.file_path, parent=self)
+        self.worker.start()
+
+        self._setup_ui()
+        self.adjustSize()
+        self._center_on_screen()
+
+    def _setup_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        container = QFrame()
+        container.setObjectName("shareContainer")
+        container.setStyleSheet("""
+            #shareContainer {
+                background-color: #ffffff;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 18px;
+            }
+            QLabel {
+                color: #1e293b;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(container)
+        shadow.setBlurRadius(24)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(container)
+        layout.setContentsMargins(22, 18, 22, 18)
+        layout.setSpacing(10)
+
+        # Header: Title + Close Button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(24)
+
+        title_label = QLabel("📡 AirDrop / Local Share")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1e293b;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(24, 24)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.4);
+                font-size: 13px;
+                font-weight: bold;
+                border: none;
+                border-radius: 12px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #1e293b;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # File info banner
+        file_size_bytes = os.path.getsize(self.file_path) if os.path.isfile(self.file_path) else 0
+        formatted_size = self._format_size(file_size_bytes)
+        filename = os.path.basename(self.file_path)
+
+        file_banner = QFrame()
+        file_banner.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 6px;
+            }
+        """)
+        banner_layout = QHBoxLayout(file_banner)
+        banner_layout.setContentsMargins(10, 6, 10, 6)
+
+        file_icon_label = QLabel("📦")
+        file_icon_label.setStyleSheet("font-size: 18px;")
+        banner_layout.addWidget(file_icon_label)
+
+        file_details = QVBoxLayout()
+        file_details.setSpacing(2)
+        name_lbl = QLabel(filename)
+        name_lbl.setStyleSheet("font-weight: 600; font-size: 13px; color: #0f172a;")
+        size_lbl = QLabel(formatted_size)
+        size_lbl.setStyleSheet("font-size: 11px; color: #64748b;")
+        file_details.addWidget(name_lbl)
+        file_details.addWidget(size_lbl)
+        banner_layout.addLayout(file_details)
+        banner_layout.addStretch()
+
+        layout.addWidget(file_banner)
+
+        # QR Code Display
+        qr_container = QFrame()
+        qr_container.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #e2e8f0;
+                border-radius: 14px;
+            }
+        """)
+        qr_layout = QVBoxLayout(qr_container)
+        qr_layout.setContentsMargins(10, 10, 10, 10)
+        qr_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+
+        qr_pix = _generate_qr_pixmap(self.worker.share_url, size=175)
+        self.qr_label = QLabel()
+        self.qr_label.setPixmap(qr_pix)
+        self.qr_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        qr_layout.addWidget(self.qr_label)
+        layout.addWidget(qr_container)
+
+        # Instructions & Connection Guide
+        instructions_frame = QFrame()
+        instructions_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+            }
+        """)
+        instructions_layout = QVBoxLayout(instructions_frame)
+        instructions_layout.setContentsMargins(12, 10, 12, 10)
+        instructions_layout.setSpacing(4)
+
+        how_to_label = QLabel(
+            "<div style='font-family: -apple-system, BlinkMacSystemFont, \"Segoe UI\", Roboto, Helvetica, Arial, sans-serif;'>"
+            "<div style='font-weight: 700; font-size: 11.5px; color: #1e293b; margin-bottom: 4px;'>💡 How to connect:</div>"
+            "<ol style='margin: 0; padding-left: 18px; font-size: 11px; color: #475569; line-height: 1.5;'>"
+            "<li style='margin-bottom: 2px;'>Connect both devices to the same Wi-Fi, <b>OR</b> turn on this PC's Wi-Fi Hotspot.</li>"
+            "<li style='margin-bottom: 2px;'>Connect your phone to that Wi-Fi/Hotspot.</li>"
+            "<li style='margin-bottom: 2px;'>Turn <b>OFF</b> mobile data (4G/5G) on your phone.</li>"
+            "<li>Scan the QR code to download.</li>"
+            "</ol>"
+            "</div>"
+        )
+        how_to_label.setTextFormat(Qt.TextFormat.RichText)
+        how_to_label.setWordWrap(True)
+        instructions_layout.addWidget(how_to_label)
+        layout.addWidget(instructions_frame)
+
+        # Direct URL & Copy row
+        url_layout = QHBoxLayout()
+        url_layout.setSpacing(8)
+
+        self.url_edit = QLineEdit(self.worker.share_url)
+        self.url_edit.setReadOnly(True)
+        self.url_edit.setStyleSheet("""
+            QLineEdit {
+                background-color: #f8fafc;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 11px;
+                color: #334155;
+            }
+        """)
+        url_layout.addWidget(self.url_edit)
+
+        self.copy_btn = QPushButton("Copy")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            QPushButton:pressed {
+                background-color: #075985;
+            }
+        """)
+        self.copy_btn.clicked.connect(self._copy_url)
+        url_layout.addWidget(self.copy_btn)
+        layout.addLayout(url_layout)
+
+        # Stop Sharing button
+        self.stop_btn = QPushButton("Stop Sharing")
+        self.stop_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #fee2e2;
+                color: #dc2626;
+                border: 1px solid #fca5a5;
+                border-radius: 8px;
+                padding: 8px;
+                font-weight: 600;
+                font-size: 13px;
+                margin-top: 4px;
+            }
+            QPushButton:hover {
+                background-color: #fecaca;
+            }
+            QPushButton:pressed {
+                background-color: #fca5a5;
+            }
+        """)
+        self.stop_btn.clicked.connect(self.reject)
+        layout.addWidget(self.stop_btn)
+
+        outer_layout.addWidget(container)
+
+    def _copy_url(self) -> None:
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.worker.share_url)
+        self.copy_btn.setText("Copied! ✓")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #16a34a;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+        """)
+        QTimer.singleShot(1500, self._reset_copy_btn)
+
+    def _reset_copy_btn(self) -> None:
+        self.copy_btn.setText("Copy")
+        self.copy_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #0284c7;
+                color: #ffffff;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 600;
+                font-size: 12px;
+            }
+            QPushButton:hover {
+                background-color: #0369a1;
+            }
+            QPushButton:pressed {
+                background-color: #075985;
+            }
+        """)
+
+    def _format_size(self, num_bytes: int) -> str:
+        for unit in ["B", "KB", "MB", "GB"]:
+            if num_bytes < 1024.0:
+                return f"{num_bytes:.1f} {unit}" if unit != "B" else f"{num_bytes} B"
+            num_bytes /= 1024.0
+        return f"{num_bytes:.1f} TB"
+
+    def _center_on_screen(self) -> None:
+        screen = QApplication.primaryScreen()
+        if screen:
+            geo = screen.availableGeometry()
+            x = (geo.width() - self.width()) // 2
+            y = (geo.height() - self.height()) // 2
+            self.move(x, y)
+
+    def mousePressEvent(self, event) -> None:  # noqa: N802
+        if event.button() == Qt.MouseButton.LeftButton:
+            child = self.childAt(event.position().toPoint())
+            if child is not None and isinstance(child, (QPushButton, QLineEdit)):
+                return
+            self._drag_start_pos = (
+                event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        if (
+            event.buttons() == Qt.MouseButton.LeftButton
+            and self._drag_start_pos is not None
+        ):
+            self.move(event.globalPosition().toPoint() - self._drag_start_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event) -> None:  # noqa: N802
+        self._drag_start_pos = None
+        super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+            self.reject()
+        else:
+            super().keyPressEvent(event)
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait(1000)
+        super().closeEvent(event)
+
+    def reject(self) -> None:
+        if self.worker and self.worker.isRunning():
+            self.worker.stop()
+            self.worker.wait(1000)
+        super().reject()
+
+
 class ZoomLockedWebEngineView(QWebEngineView):
     """Custom QWebEngineView subclass that definitively blocks trackpad gestures, Ctrl+Wheel zooming, and enables window dragging."""
 
@@ -6236,7 +6730,7 @@ class QuickDropBridge(QObject):
         act_upper = action_name.strip().upper()
         if act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.window.toggle_keep_awake()
-        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
+        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE"):
             self.window.open_file_dialog(act_upper)
         else:
             self.window._handle_action_click(action_name)
@@ -6559,6 +7053,9 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_timer()
         elif act_upper == "RECORD":
             self._open_record()
+        elif act_upper in ("AIRDROP", "SHARE", "LOCAL SHARE", "LOCAL_SHARE"):
+            for path in file_paths:
+                self._open_share(path)
         elif act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.toggle_keep_awake()
         elif (
@@ -6968,7 +7465,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self.toggle_float_on_top(target_state)
         elif act in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
             self.toggle_keep_awake()
-        elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
+        elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "AIRDROP", "SHARE"):
             self.open_file_dialog(act)
         else:
             self.open_file_dialog(action_name)
@@ -7090,6 +7587,20 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
     def _open_record(self) -> None:
         """Open the standalone screen recorder dialog."""
         dialog = RecordDialog(self)
+        dialog.show()
+        self._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self._dialogs.remove(d)
+            if d in self._dialogs
+            else None
+        )
+
+    def _open_share(self, file_path: str) -> None:
+        """Open the AirDrop / Local Share dialog with live HTTP server and QR Code."""
+        if not os.path.isfile(file_path):
+            print(f"[QuickDrop AirDrop] File not found: '{file_path}'")
+            return
+        dialog = ShareDialog(file_path, self)
         dialog.show()
         self._dialogs.append(dialog)
         dialog.finished.connect(

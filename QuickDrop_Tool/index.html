@@ -979,6 +979,18 @@
         return;
       }
 
+      if (act === 'AIRDROP' || act === 'SHARE') {
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.open_file_dialog === 'function') {
+          b.open_file_dialog('AIRDROP');
+        } else if (b && typeof b.trigger_action === 'function') {
+          b.trigger_action('AIRDROP');
+        } else {
+          document.title = 'quickdrop:action:AIRDROP:' + Date.now();
+        }
+        return;
+      }
+
       if (act === 'SCREENSHOT' || act === 'CALC' || act === 'TIMER' || act === 'RECORD' || act === 'TERMINAL') {
         const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
         if (b && typeof b.trigger_action === 'function') {
