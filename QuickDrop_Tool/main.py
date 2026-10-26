@@ -1,3 +1,4 @@
+import atexit
 import os
 import sys
 
@@ -6,6 +7,7 @@ if sys.platform.startswith('linux'):
     os.environ["QT_QPA_PLATFORM"] = "xcb"
 
 import ast
+import math
 import operator as _py_op
 import shutil
 import subprocess
@@ -51,10 +53,11 @@ from PyQt6.QtCore import (
 )
 import PyQt6.QtCore as QtCore
 from PyQt6.QtWebChannel import QWebChannel
-from PyQt6.QtGui import QBrush, QClipboard, QColor, QFont, QImage, QPainter, QPen, QPixmap
+from PyQt6.QtGui import QBrush, QClipboard, QColor, QFont, QFontMetrics, QImage, QPainter, QPen, QPixmap, QPolygonF
 from PyQt6.QtWidgets import (
     QApplication,
     QButtonGroup,
+    QColorDialog,
     QComboBox,
     QDialog,
     QFileDialog,
@@ -62,12 +65,16 @@ from PyQt6.QtWidgets import (
     QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
+    QInputDialog,
     QLabel,
     QLineEdit,
+    QMenu,
     QProgressBar,
     QPushButton,
     QSlider,
     QSpinBox,
+    QStyle,
+    QSystemTrayIcon,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -3962,7 +3969,7 @@ class EditDialog(QDialog):
 
 
 class AnnotateCanvasWidget(QWidget):
-    """Interactive canvas allowing freehand drawing of red marker annotations directly onto the image."""
+    """Interactive canvas supporting rich annotations (Pen, Rectangle, Ellipse, Arrow, Text) with live previews."""
 
     def __init__(self, file_path: str, parent=None) -> None:
         super().__init__(parent)
@@ -3974,10 +3981,47 @@ class AnnotateCanvasWidget(QWidget):
         self.drawing_layer = QPixmap(self._img_w, self._img_h)
         self.drawing_layer.fill(Qt.GlobalColor.transparent)
 
+        self.current_tool = "Pen"
+        self.current_color = QColor(255, 59, 48)  # Vibrant marker red
+        self.thickness = 4
+        self.undo_stack: list[QPixmap] = []
+
+        self._is_drawing = False
+        self._start_point: QPointF | None = None
+        self._current_point: QPointF | None = None
         self._last_point: QPointF | None = None
-        self.setMinimumSize(360, 240)
+
+        self.setMinimumSize(420, 320)
         self.setMouseTracking(True)
         self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def set_tool(self, tool: str) -> None:
+        self.current_tool = tool
+        if tool == "Text":
+            self.setCursor(Qt.CursorShape.IBeamCursor)
+        else:
+            self.setCursor(Qt.CursorShape.CrossCursor)
+
+    def set_color(self, color: QColor) -> None:
+        self.current_color = color
+
+    def set_thickness(self, thickness: int) -> None:
+        self.thickness = max(1, min(50, int(thickness)))
+
+    def _save_undo_state(self) -> None:
+        self.undo_stack.append(self.drawing_layer.copy())
+        if len(self.undo_stack) > 35:
+            self.undo_stack.pop(0)
+
+    def undo(self) -> None:
+        if self.undo_stack:
+            self.drawing_layer = self.undo_stack.pop()
+            self.update()
+
+    def clear(self) -> None:
+        self._save_undo_state()
+        self.drawing_layer.fill(Qt.GlobalColor.transparent)
+        self.update()
 
     def _get_display_rect(self) -> QRectF:
         w_avail = float(self.width())
@@ -3998,21 +4042,9 @@ class AnnotateCanvasWidget(QWidget):
 
         return QRectF(draw_x, draw_y, draw_w, draw_h)
 
-    def paintEvent(self, event) -> None:  # noqa: N802
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
-
+    def _get_image_scale(self) -> float:
         drect = self._get_display_rect()
-
-        # Subtle card backdrop for transparent images
-        painter.fillRect(drect.toRect(), QColor(245, 245, 247))
-
-        if not self.original_pixmap.isNull():
-            painter.drawPixmap(drect.toRect(), self.original_pixmap)
-
-        if not self.drawing_layer.isNull():
-            painter.drawPixmap(drect.toRect(), self.drawing_layer)
+        return float(self._img_w) / max(1.0, drect.width())
 
     def _widget_to_image_coords(self, pos: QPointF) -> QPointF | None:
         drect = self._get_display_rect()
@@ -4026,20 +4058,153 @@ class AnnotateCanvasWidget(QWidget):
         iy = max(0.0, min(float(self._img_h), iy))
         return QPointF(ix, iy)
 
+    def _draw_shape(
+        self,
+        painter: QPainter,
+        tool: str,
+        p1: QPointF,
+        p2: QPointF,
+        color: QColor,
+        stroke_width: float,
+    ) -> None:
+        pen = QPen(
+            color,
+            stroke_width,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+
+        if tool == "Rectangle":
+            rect = QRectF(
+                min(p1.x(), p2.x()),
+                min(p1.y(), p2.y()),
+                abs(p2.x() - p1.x()),
+                abs(p2.y() - p1.y()),
+            )
+            painter.drawRect(rect)
+
+        elif tool == "Ellipse":
+            rect = QRectF(
+                min(p1.x(), p2.x()),
+                min(p1.y(), p2.y()),
+                abs(p2.x() - p1.x()),
+                abs(p2.y() - p1.y()),
+            )
+            painter.drawEllipse(rect)
+
+        elif tool == "Arrow":
+            dx = p2.x() - p1.x()
+            dy = p2.y() - p1.y()
+            dist = math.hypot(dx, dy)
+            painter.drawLine(p1, p2)
+            if dist > 3.0:
+                angle = math.atan2(dy, dx)
+                arrow_len = max(12.0, stroke_width * 3.5)
+                arrow_len = min(arrow_len, dist * 0.45)
+                arrow_angle = math.pi / 6.0
+
+                p_left = QPointF(
+                    p2.x() - arrow_len * math.cos(angle - arrow_angle),
+                    p2.y() - arrow_len * math.sin(angle - arrow_angle),
+                )
+                p_right = QPointF(
+                    p2.x() - arrow_len * math.cos(angle + arrow_angle),
+                    p2.y() - arrow_len * math.sin(angle + arrow_angle),
+                )
+                painter.setBrush(QBrush(color))
+                painter.drawPolygon(QPolygonF([p2, p_left, p_right]))
+
+    def paintEvent(self, event) -> None:  # noqa: N802
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+
+        drect = self._get_display_rect()
+
+        # Canvas card backdrop
+        painter.fillRect(drect.toRect(), QColor(245, 245, 247))
+
+        if not self.original_pixmap.isNull():
+            painter.drawPixmap(drect.toRect(), self.original_pixmap)
+
+        if not self.drawing_layer.isNull():
+            painter.drawPixmap(drect.toRect(), self.drawing_layer)
+
+        # Live shape preview while dragging
+        if (
+            self._is_drawing
+            and self._start_point
+            and self._current_point
+            and self.current_tool in ("Rectangle", "Ellipse", "Arrow")
+        ):
+            painter.save()
+            painter.setClipRect(drect)
+            scale_x = drect.width() / float(self._img_w)
+            scale_y = drect.height() / float(self._img_h)
+            painter.translate(drect.x(), drect.y())
+            painter.scale(scale_x, scale_y)
+            stroke = max(1.0, float(self.thickness) * self._get_image_scale())
+            self._draw_shape(
+                painter,
+                self.current_tool,
+                self._start_point,
+                self._current_point,
+                self.current_color,
+                stroke,
+            )
+            painter.restore()
+
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             img_pt = self._widget_to_image_coords(event.position())
-            if img_pt:
-                self._last_point = img_pt
-                drect = self._get_display_rect()
-                scale = float(self._img_w) / max(1.0, drect.width())
-                pen_width = max(3.0, 4.0 * scale)
+            if img_pt is None:
+                event.accept()
+                return
 
+            if self.current_tool == "Text":
+                text, ok = QInputDialog.getText(
+                    self,
+                    "Add Text Annotation",
+                    "Enter annotation text:",
+                    QLineEdit.EchoMode.Normal,
+                    "",
+                )
+                if ok and text.strip():
+                    self._save_undo_state()
+                    scale = self._get_image_scale()
+                    base_font_size = max(12, int(self.thickness * 1.5 + 8))
+                    effective_font = max(10, int(base_font_size * scale))
+
+                    painter = QPainter(self.drawing_layer)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    painter.setPen(QPen(self.current_color))
+                    font = QFont("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", effective_font)
+                    font.setBold(True)
+                    painter.setFont(font)
+                    fm = QFontMetrics(font)
+                    draw_y = max(float(fm.ascent()), img_pt.y())
+                    painter.drawText(QPointF(img_pt.x(), draw_y), text.strip())
+                    painter.end()
+                    self.update()
+                event.accept()
+                return
+
+            self._is_drawing = True
+            self._start_point = img_pt
+            self._current_point = img_pt
+            self._last_point = img_pt
+
+            if self.current_tool == "Pen":
+                self._save_undo_state()
                 painter = QPainter(self.drawing_layer)
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                stroke = max(1.0, float(self.thickness) * self._get_image_scale())
                 pen = QPen(
-                    QColor(255, 59, 48),
-                    pen_width,
+                    self.current_color,
+                    stroke,
                     Qt.PenStyle.SolidLine,
                     Qt.PenCapStyle.RoundCap,
                     Qt.PenJoinStyle.RoundJoin,
@@ -4048,50 +4213,79 @@ class AnnotateCanvasWidget(QWidget):
                 painter.drawPoint(img_pt)
                 painter.end()
                 self.update()
+            else:
+                self.update()
+
             event.accept()
             return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
-        if (event.buttons() & Qt.MouseButton.LeftButton) and self._last_point is not None:
+        if (event.buttons() & Qt.MouseButton.LeftButton) and self._is_drawing:
             img_pt = self._widget_to_image_coords(event.position())
-            if img_pt:
-                drect = self._get_display_rect()
-                scale = float(self._img_w) / max(1.0, drect.width())
-                pen_width = max(3.0, 4.0 * scale)
+            if img_pt is None:
+                event.accept()
+                return
 
-                painter = QPainter(self.drawing_layer)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                pen = QPen(
-                    QColor(255, 59, 48),
-                    pen_width,
-                    Qt.PenStyle.SolidLine,
-                    Qt.PenCapStyle.RoundCap,
-                    Qt.PenJoinStyle.RoundJoin,
-                )
-                painter.setPen(pen)
-                painter.drawLine(self._last_point, img_pt)
-                painter.end()
-                self._last_point = img_pt
+            if self.current_tool == "Pen":
+                if self._last_point is not None:
+                    painter = QPainter(self.drawing_layer)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    stroke = max(1.0, float(self.thickness) * self._get_image_scale())
+                    pen = QPen(
+                        self.current_color,
+                        stroke,
+                        Qt.PenStyle.SolidLine,
+                        Qt.PenCapStyle.RoundCap,
+                        Qt.PenJoinStyle.RoundJoin,
+                    )
+                    painter.setPen(pen)
+                    painter.drawLine(self._last_point, img_pt)
+                    painter.end()
+                    self._last_point = img_pt
+                    self.update()
+            else:
+                self._current_point = img_pt
                 self.update()
+
             event.accept()
             return
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton and self._is_drawing:
+            img_pt = self._widget_to_image_coords(event.position())
+            if img_pt is not None:
+                self._current_point = img_pt
+
+            if self.current_tool in ("Rectangle", "Ellipse", "Arrow"):
+                if self._start_point and self._current_point:
+                    self._save_undo_state()
+                    painter = QPainter(self.drawing_layer)
+                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+                    stroke = max(1.0, float(self.thickness) * self._get_image_scale())
+                    self._draw_shape(
+                        painter,
+                        self.current_tool,
+                        self._start_point,
+                        self._current_point,
+                        self.current_color,
+                        stroke,
+                    )
+                    painter.end()
+
+            self._is_drawing = False
+            self._start_point = None
+            self._current_point = None
             self._last_point = None
+            self.update()
             event.accept()
             return
         super().mouseReleaseEvent(event)
 
-    def clear(self) -> None:
-        self.drawing_layer.fill(Qt.GlobalColor.transparent)
-        self.update()
-
 
 class AnnotateDialog(QDialog):
-    """Frameless light-themed dialog for freehand marker annotations on images."""
+    """Frameless modern light-themed dialog for rich image annotations."""
 
     def __init__(self, file_path: str, parent=None) -> None:
         super().__init__(parent)
@@ -4103,7 +4297,8 @@ class AnnotateDialog(QDialog):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
-        self.setFixedSize(520, 540)
+        self.resize(680, 640)
+        self.setMinimumSize(600, 560)
 
         self._setup_ui()
         self._center_on_screen()
@@ -4121,13 +4316,13 @@ class AnnotateDialog(QDialog):
                 border-radius: 16px;
             }
             QLabel {
-                color: #222222;
+                color: #1e293b;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
             }
         """)
 
         shadow = QGraphicsDropShadowEffect(container)
-        shadow.setBlurRadius(20)
+        shadow.setBlurRadius(24)
         shadow.setColor(QColor(0, 0, 0, 45))
         shadow.setOffset(0, 4)
         container.setGraphicsEffect(shadow)
@@ -4138,64 +4333,181 @@ class AnnotateDialog(QDialog):
 
         # Header: Centered title with subtle close button
         header_layout = QHBoxLayout()
-        header_layout.addSpacing(22)
+        header_layout.addSpacing(24)
 
-        title_label = QLabel("Annotate Image")
+        title_label = QLabel("Annotation Studio")
         title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #1e293b;")
         header_layout.addWidget(title_label)
 
         close_btn = QPushButton("✕")
-        close_btn.setFixedSize(22, 22)
+        close_btn.setFixedSize(24, 24)
         close_btn.setStyleSheet("""
             QPushButton {
                 background: transparent;
-                color: rgba(0, 0, 0, 0.35);
-                font-size: 12px;
+                color: rgba(0, 0, 0, 0.4);
+                font-size: 13px;
                 font-weight: bold;
                 border: none;
-                border-radius: 11px;
+                border-radius: 12px;
             }
             QPushButton:hover {
                 background: rgba(0, 0, 0, 0.08);
-                color: #222222;
+                color: #1e293b;
             }
         """)
         close_btn.clicked.connect(self.reject)
         header_layout.addWidget(close_btn)
         layout.addLayout(header_layout)
 
-        info_label = QLabel("Click and drag on the image to draw freehand marker annotations:")
+        # 1. Instruction label with proper margins, word wrap, and no clipping
+        info_label = QLabel(
+            "Select a tool below to annotate. Drag on the image for shapes or pen strokes; click with the Text tool to type annotations."
+        )
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        info_label.setStyleSheet("color: #666666; font-size: 11px; margin-top: -4px;")
+        info_label.setWordWrap(True)
+        info_label.setStyleSheet("color: #64748b; font-size: 12px; margin: 0px 4px 2px 4px;")
         layout.addWidget(info_label)
 
-        # Canvas
+        # 2. Rich Toolbar
+        self.toolbar_frame = QFrame()
+        self.toolbar_frame.setObjectName("annotateToolbar")
+        self.toolbar_frame.setStyleSheet("""
+            #annotateToolbar {
+                background-color: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 10px;
+                padding: 4px;
+            }
+            QLabel {
+                font-size: 12px;
+                font-weight: 600;
+                color: #475569;
+            }
+            QComboBox {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 10px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #1e293b;
+                min-width: 115px;
+            }
+            QComboBox:hover {
+                border-color: #94a3b8;
+            }
+            QComboBox::drop-down {
+                border: none;
+                width: 18px;
+            }
+            QSpinBox {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #1e293b;
+                min-width: 80px;
+            }
+            QSpinBox:hover {
+                border-color: #94a3b8;
+            }
+        """)
+        toolbar_layout = QHBoxLayout(self.toolbar_frame)
+        toolbar_layout.setContentsMargins(10, 6, 10, 6)
+        toolbar_layout.setSpacing(10)
+
+        # Tool selector
+        toolbar_layout.addWidget(QLabel("Tool:"))
+        self.tool_combo = QComboBox()
+        self.tool_combo.addItem("✏️ Pen", "Pen")
+        self.tool_combo.addItem("⬜ Rectangle", "Rectangle")
+        self.tool_combo.addItem("⭕ Ellipse", "Ellipse")
+        self.tool_combo.addItem("↗️ Arrow", "Arrow")
+        self.tool_combo.addItem("🔤 Text", "Text")
+        self.tool_combo.currentIndexChanged.connect(self._on_tool_changed)
+        toolbar_layout.addWidget(self.tool_combo)
+
+        toolbar_layout.addSpacing(6)
+
+        # Color picker button
+        self.color_btn = QPushButton("🎨 Color")
+        self.color_btn.clicked.connect(self._choose_color)
+        toolbar_layout.addWidget(self.color_btn)
+
+        toolbar_layout.addSpacing(6)
+
+        # Thickness / Size control
+        toolbar_layout.addWidget(QLabel("Size:"))
+        self.thickness_spin = QSpinBox()
+        self.thickness_spin.setRange(1, 50)
+        self.thickness_spin.setValue(4)
+        self.thickness_spin.setSuffix(" px")
+        self.thickness_spin.valueChanged.connect(self._on_thickness_changed)
+        toolbar_layout.addWidget(self.thickness_spin)
+
+        toolbar_layout.addStretch()
+
+        # Undo button
+        self.undo_btn = QPushButton("↩ Undo")
+        self.undo_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #1e293b;
+            }
+            QPushButton:hover {
+                background-color: #f1f5f9;
+                border-color: #94a3b8;
+            }
+            QPushButton:pressed {
+                background-color: #e2e8f0;
+            }
+        """)
+        self.undo_btn.clicked.connect(self._on_undo)
+        toolbar_layout.addWidget(self.undo_btn)
+
+        # Clear button
+        self.clear_btn = QPushButton("🗑 Clear")
+        self.clear_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ffffff;
+                border: 1px solid #cbd5e1;
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 12px;
+                font-weight: 500;
+                color: #dc2626;
+            }
+            QPushButton:hover {
+                background-color: #fee2e2;
+                border-color: #fca5a5;
+            }
+            QPushButton:pressed {
+                background-color: #fecaca;
+            }
+        """)
+        self.clear_btn.clicked.connect(self._on_clear)
+        toolbar_layout.addWidget(self.clear_btn)
+
+        layout.addWidget(self.toolbar_frame)
+
+        # 3. Canvas
         self.canvas = AnnotateCanvasWidget(self.file_path, self)
         layout.addWidget(self.canvas, stretch=1)
 
-        # Bottom Bar
+        # Update initial color swatch on button
+        self._update_color_btn(self.canvas.current_color)
+
+        # 4. Bottom action buttons
         bottom_layout = QHBoxLayout()
         bottom_layout.setSpacing(10)
-
-        reset_btn = QPushButton("Reset / Clear")
-        reset_btn.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 0, 0, 0.06);
-                color: #444444;
-                border: none;
-                border-radius: 6px;
-                padding: 6px 14px;
-                font-weight: 500;
-                font-size: 13px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 0, 0, 0.1);
-                color: #222222;
-            }
-        """)
-        reset_btn.clicked.connect(self.canvas.clear)
-        bottom_layout.addWidget(reset_btn)
 
         bottom_layout.addStretch()
 
@@ -4203,16 +4515,16 @@ class AnnotateDialog(QDialog):
         cancel_btn.setStyleSheet("""
             QPushButton {
                 background-color: rgba(0, 0, 0, 0.06);
-                color: #444444;
+                color: #475569;
                 border: none;
                 border-radius: 6px;
-                padding: 6px 14px;
+                padding: 8px 18px;
                 font-weight: 500;
                 font-size: 13px;
             }
             QPushButton:hover {
                 background-color: rgba(0, 0, 0, 0.1);
-                color: #222222;
+                color: #1e293b;
             }
         """)
         cancel_btn.clicked.connect(self.reject)
@@ -4225,7 +4537,7 @@ class AnnotateDialog(QDialog):
                 color: white;
                 border: none;
                 border-radius: 6px;
-                padding: 6px 18px;
+                padding: 8px 22px;
                 font-weight: bold;
                 font-size: 13px;
             }
@@ -4241,6 +4553,42 @@ class AnnotateDialog(QDialog):
 
         layout.addLayout(bottom_layout)
         outer_layout.addWidget(container)
+
+    def _on_tool_changed(self, index: int) -> None:
+        tool = self.tool_combo.itemData(index) or "Pen"
+        self.canvas.set_tool(tool)
+
+    def _on_thickness_changed(self, val: int) -> None:
+        self.canvas.set_thickness(val)
+
+    def _on_undo(self) -> None:
+        self.canvas.undo()
+
+    def _on_clear(self) -> None:
+        self.canvas.clear()
+
+    def _choose_color(self) -> None:
+        color = QColorDialog.getColor(self.canvas.current_color, self, "Select Annotation Color")
+        if color.isValid():
+            self.canvas.set_color(color)
+            self._update_color_btn(color)
+
+    def _update_color_btn(self, color: QColor) -> None:
+        text_color = "#ffffff" if color.lightness() < 135 else "#1e293b"
+        self.color_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {color.name()};
+                color: {text_color};
+                border: 1px solid rgba(0, 0, 0, 0.2);
+                border-radius: 6px;
+                padding: 5px 12px;
+                font-size: 12px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                border: 2px solid rgba(0, 0, 0, 0.4);
+            }}
+        """)
 
     def _center_on_screen(self) -> None:
         screen = QApplication.primaryScreen()
@@ -4284,7 +4632,12 @@ class AnnotateDialog(QDialog):
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             child = self.childAt(event.position().toPoint())
-            if child is not None and (child is self.canvas or self.canvas.isAncestorOf(child)):
+            if child is not None and (
+                child is self.canvas
+                or self.canvas.isAncestorOf(child)
+                or child is self.toolbar_frame
+                or self.toolbar_frame.isAncestorOf(child)
+            ):
                 return
             self._drag_start_pos = (
                 event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -5159,6 +5512,19 @@ class RecorderThread(QThread):
                 pass
 
 
+class StopRecordingWorker(QThread):
+    """Background worker thread that stops recording and finalizes DBus/processes without blocking UI."""
+
+    def __init__(self, recorder_thread: RecorderThread | None, parent=None) -> None:
+        super().__init__(parent)
+        self.recorder_thread = recorder_thread
+
+    def run(self) -> None:
+        if self.recorder_thread and self.recorder_thread.isRunning():
+            self.recorder_thread.stop()
+            self.recorder_thread.wait()
+
+
 class RecordDialog(QDialog):
     """Frameless light-themed floating screen recorder dialog with threaded capture and live timer."""
 
@@ -5168,7 +5534,8 @@ class RecordDialog(QDialog):
 
         self._is_recording = False
         self._elapsed_seconds = 0
-        self._recorder_thread = None
+        self._recorder_thread: RecorderThread | None = None
+        self._stop_worker: StopRecordingWorker | None = None
         self._current_output_path = ""
 
         self._ui_timer = QTimer(self)
@@ -5184,6 +5551,14 @@ class RecordDialog(QDialog):
 
         self._setup_ui()
         self._center_on_screen()
+
+    @property
+    def is_recording(self) -> bool:
+        return self._is_recording
+
+    @is_recording.setter
+    def is_recording(self, val: bool) -> None:
+        self._is_recording = bool(val)
 
     def _setup_ui(self) -> None:
         self.outer_layout = QVBoxLayout(self)
@@ -5481,13 +5856,20 @@ class RecordDialog(QDialog):
         self._recorder_thread.start()
         self._ui_timer.start()
         self._set_mini_mode(True)
+        if self.parent():
+            self.parent().hide()
 
     def _stop_recording(self) -> None:
         if not self._is_recording:
             return
-        self._set_mini_mode(False)
+
+        self._is_recording = False
+
+        # Immediately disable buttons and show "Saving..." text/state
         self.stop_btn.setEnabled(False)
-        self.status_pill.setText("● Finalizing video...")
+        self.start_btn.setEnabled(False)
+        self.stop_btn.setText("Saving...")
+        self.status_pill.setText("● Saving...")
         self.status_pill.setStyleSheet("""
             QLabel {
                 background-color: #fef3c7;
@@ -5498,22 +5880,29 @@ class RecordDialog(QDialog):
                 border-radius: 10px;
             }
         """)
+        self.info_label.setText("Saving video...")
         self._ui_timer.stop()
-        if self._recorder_thread and self._recorder_thread.isRunning():
-            self._recorder_thread.stop()
 
-    def _on_started(self) -> None:
-        pass
+        # Run the blocking stop / DBus finalization in the background worker thread
+        self._stop_worker = StopRecordingWorker(self._recorder_thread, parent=self)
+        self._stop_worker.finished.connect(self._on_stop_finished)
+        self._stop_worker.start()
 
-    def _on_finished(self, saved_path: str) -> None:
+    def _on_stop_finished(self) -> None:
         self._set_mini_mode(False)
-        self._is_recording = False
-        self._current_output_path = saved_path
+        if self.parent():
+            self.parent().showNormal()
         self.start_btn.setEnabled(True)
         self.start_btn.setText("Start New")
         self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("Stop")
 
-        filename = os.path.basename(saved_path)
+        if not self._current_output_path and self._recorder_thread:
+            rec_path = getattr(self._recorder_thread, "_recorded_path", "")
+            if rec_path:
+                self._current_output_path = rec_path
+
+        filename = os.path.basename(self._current_output_path) if self._current_output_path else "video.webm"
         self.status_pill.setText("✓ Saved")
         self.status_pill.setStyleSheet("""
             QLabel {
@@ -5527,13 +5916,26 @@ class RecordDialog(QDialog):
         """)
         self.info_label.setText(f"Saved! {filename}")
         self.open_folder_btn.show()
+        self._stop_worker = None
+
+    def _on_started(self) -> None:
+        pass
+
+    def _on_finished(self, saved_path: str) -> None:
+        if saved_path:
+            self._current_output_path = saved_path
+        if not self._stop_worker:
+            self._on_stop_finished()
 
     def _on_error(self, err_msg: str) -> None:
         self._set_mini_mode(False)
+        if self.parent():
+            self.parent().showNormal()
         self._is_recording = False
         self._ui_timer.stop()
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
+        self.stop_btn.setText("Stop")
         self.status_pill.setText("✕ Error")
         self.status_pill.setStyleSheet("""
             QLabel {
@@ -5546,21 +5948,7 @@ class RecordDialog(QDialog):
             }
         """)
         self.info_label.setText(f"Error: {err_msg}")
-        self._ui_timer.stop()
-        self.start_btn.setEnabled(True)
-        self.stop_btn.setEnabled(False)
-        self.status_pill.setText("✕ Error")
-        self.status_pill.setStyleSheet("""
-            QLabel {
-                background-color: #fee2e2;
-                color: #dc2626;
-                font-size: 11px;
-                font-weight: 600;
-                padding: 4px 10px;
-                border-radius: 10px;
-            }
-        """)
-        self.info_label.setText(f"Error: {err_msg}")
+        self._stop_worker = None
 
     def _on_tick(self) -> None:
         self._elapsed_seconds += 1
@@ -5629,12 +6017,16 @@ class RecordDialog(QDialog):
         if self._is_recording and self._recorder_thread and self._recorder_thread.isRunning():
             self._recorder_thread.stop()
             self._recorder_thread.wait(4000)
+        if self.parent():
+            self.parent().showNormal()
         super().closeEvent(event)
 
     def reject(self) -> None:
         if self._is_recording and self._recorder_thread and self._recorder_thread.isRunning():
             self._recorder_thread.stop()
             self._recorder_thread.wait(4000)
+        if self.parent():
+            self.parent().showNormal()
         super().reject()
 
 
@@ -5692,6 +6084,88 @@ class ZoomLockedWebEngineView(QWebEngineView):
         super().mouseReleaseEvent(event)
 
 
+class KeepAwakeManager:
+    """Manages cross-platform sleep/idle inhibition to keep screen and system awake."""
+
+    def __init__(self) -> None:
+        self.is_active = False
+        self.process: subprocess.Popen | None = None
+        atexit.register(self.stop)
+
+    def toggle(self) -> bool:
+        """Toggle the keep-awake state and return the new active status."""
+        if self.is_active:
+            self.stop()
+        else:
+            self.start()
+        return self.is_active
+
+    def start(self) -> None:
+        """Activate system sleep inhibition."""
+        if self.is_active:
+            return
+
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                # 0x80000003 = ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000003)
+                self.is_active = True
+            elif sys.platform == "darwin":
+                # macOS: caffeinate -d prevents display from sleeping
+                self.process = subprocess.Popen(
+                    ["caffeinate", "-d"],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.is_active = True
+            else:
+                # Linux: spawn gnome-session-inhibit (or systemd-inhibit)
+                inhibit_cmd = None
+                if shutil.which("gnome-session-inhibit"):
+                    inhibit_cmd = ["gnome-session-inhibit", "--inhibit", "suspend:idle", "sleep", "infinity"]
+                elif shutil.which("systemd-inhibit"):
+                    inhibit_cmd = ["systemd-inhibit", "--what=idle:sleep", "--why=QuickDrop Keep Awake", "sleep", "infinity"]
+                else:
+                    inhibit_cmd = ["gnome-session-inhibit", "--inhibit", "suspend:idle", "sleep", "infinity"]
+
+                self.process = subprocess.Popen(
+                    inhibit_cmd,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+                self.is_active = True
+        except Exception as exc:
+            print(f"[QuickDrop] Error starting keep-awake: {exc}")
+            self.is_active = False
+
+    def stop(self) -> None:
+        """Deactivate system sleep inhibition and restore default power management."""
+        if not self.is_active and not self.process:
+            return
+
+        try:
+            if sys.platform == "win32":
+                import ctypes
+                # 0x80000000 = ES_CONTINUOUS resets execution state
+                ctypes.windll.kernel32.SetThreadExecutionState(0x80000000)
+            elif self.process:
+                try:
+                    self.process.terminate()
+                    self.process.wait(timeout=1)
+                except Exception:
+                    try:
+                        self.process.kill()
+                    except Exception:
+                        pass
+                self.process = None
+        except Exception as exc:
+            print(f"[QuickDrop] Error stopping keep-awake: {exc}")
+        finally:
+            self.is_active = False
+            self.process = None
+
+
 class QuickDropBridge(QObject):
     """Bridge object exposed via QWebChannel for direct JavaScript-to-Python communication."""
 
@@ -5716,6 +6190,16 @@ class QuickDropBridge(QObject):
             f"if (window.setFloatState) window.setFloatState({is_float_js});"
         )
 
+    @QtCore.pyqtSlot(result=bool)
+    def toggleKeepAwake(self) -> bool:
+        new_state = self.window.toggle_keep_awake()
+        print(f"--> [BACKEND] Keep Awake Toggle: {new_state}")
+        return new_state
+
+    @QtCore.pyqtSlot(result=bool)
+    def toggle_keep_awake(self) -> bool:
+        return self.toggleKeepAwake()
+
     @QtCore.pyqtSlot()
     def start_drag(self):
         self.drag_offset = self.window.pos() - QCursor.pos()
@@ -5733,7 +6217,12 @@ class QuickDropBridge(QObject):
     @QtCore.pyqtSlot()
     def close_app(self) -> None:
         print("DEBUG: close_app called")
-        self.window.close()
+        if hasattr(self.window, "keep_awake_manager"):
+            self.window.keep_awake_manager.stop()
+        if hasattr(self.window, "_stop_hotkey_listener"):
+            self.window._stop_hotkey_listener()
+        if hasattr(self.window, "_tray_icon") and self.window._tray_icon:
+            self.window._tray_icon.hide()
         QApplication.quit()
 
     @QtCore.pyqtSlot(str)
@@ -5745,7 +6234,9 @@ class QuickDropBridge(QObject):
 
         print(f"DEBUG: trigger_action called with: {action_name}")
         act_upper = action_name.strip().upper()
-        if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
+        if act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
+            self.window.toggle_keep_awake()
+        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
             self.window.open_file_dialog(act_upper)
         else:
             self.window._handle_action_click(action_name)
@@ -5758,7 +6249,17 @@ class QuickDropBridge(QObject):
         self._last_trigger_time = now
 
         print(f"DEBUG: open_file_dialog called with: {action_name}")
+        act_upper = action_name.strip().upper()
+        if act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
+            self.window.toggle_keep_awake()
+            return
         self.window.open_file_dialog(action_name)
+
+
+class GlobalHotkeyEmitter(QObject):
+    """Thread-safe signal dispatcher bridging background pynput callbacks to the Qt main thread."""
+
+    hotkey_triggered = pyqtSignal()
 
 
 class TransparentWebDropZone(ZoomLockedWebEngineView):
@@ -5799,6 +6300,7 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         self._dialogs: list[QDialog] = []
         self._is_processing = False
         self.process_file_action = self.process_dropped_files
+        self.keep_awake_manager = KeepAwakeManager()
 
         # Lock UI zoom strictly to 1.0 and hook title changes for click-to-execute
         self.setZoomFactor(1.0)
@@ -5821,6 +6323,21 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         # Center on primary screen
         self._center_on_screen()
+
+        # Initialize system tray icon
+        self._setup_tray_icon()
+
+        # Initialize global summon hotkey listener (<ctrl>+<shift>+<space>)
+        self._setup_global_hotkey()
+
+    def toggle_keep_awake(self) -> bool:
+        """Toggle system keep awake state and synchronize with frontend."""
+        new_state = self.keep_awake_manager.toggle()
+        is_on_str = "true" if new_state else "false"
+        self.page().runJavaScript(
+            f"if (window.setKeepAwakeState) window.setKeepAwakeState({is_on_str});"
+        )
+        return new_state
 
     def _center_on_screen(self) -> None:
         screen = QApplication.primaryScreen()
@@ -6042,6 +6559,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_timer()
         elif act_upper == "RECORD":
             self._open_record()
+        elif act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
+            self.toggle_keep_awake()
         elif (
             act_upper == "ADD BG"
             or act_upper in ConversionWorker.FORMAT_MAP
@@ -6061,6 +6580,9 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             return
         if act_upper in ("FLOAT", "PIN") or act_upper.startswith("FLOAT"):
             self.toggle_float_on_top()
+            return
+        if act_upper in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
+            self.toggle_keep_awake()
             return
         if act_upper == "SCREENSHOT":
             self._execute_screenshot()
@@ -6444,6 +6966,8 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_record()
         elif act in ("FLOAT", "PIN") or act.startswith("FLOAT"):
             self.toggle_float_on_top(target_state)
+        elif act in ("KEEP AWAKE", "KEEP_AWAKE", "KEEPAWAKE", "AWAKE"):
+            self.toggle_keep_awake()
         elif act in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE"):
             self.open_file_dialog(act)
         else:
@@ -6759,12 +7283,97 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         # Toggles persist on release; do not reset to DEFAULT
         super().keyReleaseEvent(event)
 
+    # ── System Tray Integration ────────────────────────────────────
+
+    def _setup_tray_icon(self) -> None:
+        """Initialize the persistent system tray icon and context menu."""
+        self._tray_icon = QSystemTrayIcon(self)
+        default_icon = self.style().standardIcon(QStyle.StandardPixmap.SP_ComputerIcon)
+        self._tray_icon.setIcon(default_icon)
+        self._tray_icon.setToolTip("QuickDrop")
+
+        tray_menu = QMenu()
+        toggle_action = tray_menu.addAction("Show/Hide QuickDrop")
+        toggle_action.triggered.connect(self._toggle_window_visibility)
+
+        tray_menu.addSeparator()
+
+        quit_action = tray_menu.addAction("Quit")
+        quit_action.triggered.connect(self._quit_application)
+
+        self._tray_icon.setContextMenu(tray_menu)
+        self._tray_icon.activated.connect(self._on_tray_activated)
+        self._tray_icon.show()
+
+    def _toggle_window_visibility(self) -> None:
+        """Toggle main window visibility from system tray."""
+        if self.isVisible():
+            self.hide()
+        else:
+            self.showNormal()
+            self.activateWindow()
+            self.raise_()
+
+    def _quit_application(self) -> None:
+        """Safely quit the application from the tray menu."""
+        if hasattr(self, "keep_awake_manager"):
+            self.keep_awake_manager.stop()
+        self._stop_hotkey_listener()
+        if hasattr(self, "_tray_icon") and self._tray_icon:
+            self._tray_icon.hide()
+        QApplication.quit()
+
+    def _on_tray_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """Handle tray icon activation events, triggering showNormal on double-click."""
+        if reason == QSystemTrayIcon.ActivationReason.DoubleClick:
+            self.showNormal()
+            self.activateWindow()
+
+    # ── Global Hotkey Integration ──────────────────────────────────
+
+    def _setup_global_hotkey(self) -> None:
+        """Initialize and start background pynput global hotkey listener for <ctrl>+<shift>+<space>."""
+        self._hotkey_emitter = GlobalHotkeyEmitter(self)
+        self._hotkey_emitter.hotkey_triggered.connect(self._toggle_window_visibility)
+        self._hotkey_listener = None
+
+        try:
+            from pynput import keyboard
+
+            def on_hotkey_activated():
+                self._hotkey_emitter.hotkey_triggered.emit()
+
+            self._hotkey_listener = keyboard.GlobalHotKeys({
+                "<ctrl>+<shift>+<space>": on_hotkey_activated
+            })
+            self._hotkey_listener.daemon = True
+            self._hotkey_listener.start()
+        except Exception as exc:
+            print(f"[QuickDrop] Warning: Unable to start global hotkey listener: {exc}")
+
+    def _stop_hotkey_listener(self) -> None:
+        """Safely stop the background pynput global hotkey listener."""
+        if hasattr(self, "_hotkey_listener") and self._hotkey_listener:
+            try:
+                self._hotkey_listener.stop()
+            except Exception:
+                pass
+            self._hotkey_listener = None
+
+    def closeEvent(self, event) -> None:  # noqa: N802
+        """Override close event to minimize/hide to system tray instead of exiting."""
+        event.ignore()
+        self.hide()
+
 
 def main() -> None:
     if sys.platform.startswith('linux'):
         os.environ["QT_QPA_PLATFORM"] = "xcb"
     app = QApplication(sys.argv)
+    app.setQuitOnLastWindowClosed(False)
     drop_zone = TransparentWebDropZone()
+    app.aboutToQuit.connect(drop_zone.keep_awake_manager.stop)
+    app.aboutToQuit.connect(drop_zone._stop_hotkey_listener)
     drop_zone.show()
     sys.exit(app.exec())
 

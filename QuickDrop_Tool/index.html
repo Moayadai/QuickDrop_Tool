@@ -376,6 +376,14 @@
       stroke-width: 2.6px;
       fill: rgba(255, 85, 0, 0.28);
     }
+
+    /* Petal slice active keep awake state */
+    .petal-slice.awake-active {
+      stroke: #ffaa00;
+      stroke-width: 2.6px;
+      fill: rgba(255, 170, 0, 0.35);
+      filter: drop-shadow(0 0 10px rgba(255, 170, 0, 0.8));
+    }
   </style>
 </head>
 <body>
@@ -537,6 +545,38 @@
       updateFloatVisualState();
     };
 
+    window.isKeepAwake = false;
+
+    function updateKeepAwakeVisualState() {
+      const slice6 = document.getElementById('slice-6');
+      const label6 = document.getElementById('label-6');
+      if (currentModifier === 'SHIFT') {
+        if (slice6) {
+          if (window.isKeepAwake) {
+            slice6.classList.add('awake-active');
+            slice6.style.fill = '#ffaa00';
+            slice6.style.stroke = '#ffffff';
+            slice6.style.strokeWidth = '2px';
+            slice6.style.filter = 'drop-shadow(0 0 12px rgba(255, 170, 0, 0.9))';
+          } else {
+            slice6.classList.remove('awake-active');
+            slice6.style.fill = '';
+            slice6.style.stroke = '';
+            slice6.style.strokeWidth = '';
+            slice6.style.filter = '';
+          }
+        }
+        if (label6) {
+          label6.textContent = window.isKeepAwake ? 'AWAKE ☕' : 'KEEP AWAKE';
+        }
+      }
+    }
+
+    window.setKeepAwakeState = function(awake) {
+      window.isKeepAwake = Boolean(awake);
+      updateKeepAwakeVisualState();
+    };
+
     // Three UI States matching Tangerine macOS app
     const defaultState = [
       "PDF", "DOCX", "TXT", "JPG", "PNG", "WEBP", "HEIC", "AVIF", "TIFF", "BMP"
@@ -624,6 +664,7 @@
 
       // Synchronize float visual state on petals
       updateFloatVisualState();
+      updateKeepAwakeVisualState();
 
       // Update center circle dynamically
       if (currentHoverIndex >= 0 && currentHoverIndex < stateArray.length) {
@@ -908,6 +949,32 @@
           b.trigger_action(act);
         } else {
           document.title = 'quickdrop:action:FLOAT:' + (nextState ? '1' : '0') + ':' + Date.now();
+        }
+        return;
+      }
+
+      if (act.startsWith('KEEP AWAKE') || act.startsWith('KEEP_AWAKE') || act.startsWith('AWAKE') || act === 'KEEPAWAKE') {
+        const nextState = !window.isKeepAwake;
+        window.isKeepAwake = nextState;
+        updateKeepAwakeVisualState();
+
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.toggleKeepAwake === 'function') {
+          b.toggleKeepAwake(function(res) {
+            if (typeof window.setKeepAwakeState === 'function') {
+              window.setKeepAwakeState(res);
+            }
+          });
+        } else if (b && typeof b.toggle_keep_awake === 'function') {
+          b.toggle_keep_awake(function(res) {
+            if (typeof window.setKeepAwakeState === 'function') {
+              window.setKeepAwakeState(res);
+            }
+          });
+        } else if (b && typeof b.trigger_action === 'function') {
+          b.trigger_action('KEEP AWAKE');
+        } else {
+          document.title = 'quickdrop:action:KEEP AWAKE:' + Date.now();
         }
         return;
       }

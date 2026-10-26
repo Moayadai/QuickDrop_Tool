@@ -49,6 +49,7 @@ protobuf==7.36.2
 pyclipper==1.4.0
 PyMatting==1.1.16
 PyPDF2==3.0.1
+pynput==1.8.2
 PyQt6==6.11.0
 PyQt6-Qt6==6.11.2
 PyQt6-WebEngine==6.11.0
@@ -57,6 +58,7 @@ PyQt6_sip==13.13.0
 pytesseract==0.3.13
 python-bidi==0.6.12
 python-docx==1.2.0
+python-xlib==0.33
 PyYAML==6.0.3
 rapidocr-onnxruntime==1.2.3
 referencing==0.37.0
