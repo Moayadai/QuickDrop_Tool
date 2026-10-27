@@ -9,6 +9,7 @@ if sys.platform.startswith('linux'):
 import ast
 import http.server
 import io
+import json
 import math
 import mimetypes
 import operator as _py_op
@@ -16,8 +17,10 @@ import random
 import shutil
 import socket
 import subprocess
+import threading
 import time
 import urllib.parse
+import zipfile
 
 import qrcode
 import requests
@@ -92,6 +95,7 @@ from PyQt6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
+    QMessageBox,
     QProgressBar,
     QPushButton,
     QSlider,
@@ -641,17 +645,86 @@ class LoadingDialog(QDialog):
         super().mouseReleaseEvent(event)
 
 
+def get_unique_filename(target_path: str) -> str:
+    """
+    Returns a unique file path to prevent overwriting existing files.
+    If target_path exists (e.g. 'file_compressed.ext'), returns
+    'file_compressed_1.ext', 'file_compressed_2.ext', etc.
+    NEVER overwrites existing files.
+    """
+    if not os.path.exists(target_path):
+        return target_path
+
+    directory = os.path.dirname(target_path)
+    base_name, ext = os.path.splitext(os.path.basename(target_path))
+
+    counter = 1
+    while True:
+        candidate = os.path.join(directory, f"{base_name}_{counter}{ext}")
+        if not os.path.exists(candidate):
+            return candidate
+        counter += 1
+
+
+class CompressionWorker(QThread):
+    """Background worker thread for asynchronous media & document compression."""
+
+    started_processing = pyqtSignal()
+    compression_success = pyqtSignal(str)  # output_path
+    compression_failed = pyqtSignal(str)   # error_message
+
+    def __init__(
+        self,
+        file_path: str,
+        output_path: str,
+        category: str,
+        slider_val: int,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self.file_path = file_path
+        self.output_path = output_path
+        self.category = category
+        self.slider_val = slider_val
+
+    def run(self) -> None:
+        self.started_processing.emit()
+        try:
+            if self.category == "document":
+                out = CompressDialog._do_compress_document(self.file_path, self.output_path)
+                self.compression_success.emit(out)
+            elif self.category == "video":
+                CompressDialog._do_compress_video(self.file_path, self.output_path, self.slider_val)
+                self.compression_success.emit(self.output_path)
+            elif self.category == "pdf":
+                CompressDialog._do_compress_pdf(self.file_path, self.output_path, self.slider_val)
+                self.compression_success.emit(self.output_path)
+            elif self.category == "image":
+                CompressDialog._do_compress_image(self.file_path, self.output_path, self.slider_val)
+                self.compression_success.emit(self.output_path)
+            else:
+                raise ValueError("Sorry, this file type is not supported for compression.")
+        except Exception as exc:
+            self.compression_failed.emit(str(exc))
+
+
 class CompressDialog(QDialog):
-    """Frameless light translucent frosted glass compression dialog."""
+    """Frameless light translucent frosted glass compression dialog supporting images, videos, PDFs, and documents."""
 
     def __init__(self, file_path: str, parent=None) -> None:
         super().__init__(parent)
         self.file_path = file_path
         self._drag_start_pos = None
+        self._worker = None
 
         # Calculate original file size in bytes
         self._original_size = (
             os.path.getsize(self.file_path) if os.path.exists(self.file_path) else 0
+        )
+
+        # Strictly categorize file type into 'image', 'video', 'pdf', 'document', or 'unsupported'
+        self._mime_category, self._mime_type, self._warning_threshold = self.detect_category(
+            self.file_path
         )
 
         # 1. UI/Design: Frameless window, rounded corners with transparent window frame
@@ -659,19 +732,70 @@ class CompressDialog(QDialog):
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(380, 240)
+        self.setFixedSize(380, 260)
 
         self._setup_ui()
         self._center_on_screen()
+
+    @staticmethod
+    def detect_category(path: str) -> tuple[str, str, int]:
+        """
+        Strictly categorizes file type into:
+          - 'image'       -> Pillow (threshold 60%)
+          - 'video'       -> FFmpeg (threshold 75%)
+          - 'pdf'         -> PyMuPDF / Ghostscript (threshold 50%)
+          - 'document'    -> Standard zip archive (threshold 50%)
+          - 'unsupported' -> Rejection error
+        """
+        ext = os.path.splitext(path)[1].lower()
+        mime, _ = mimetypes.guess_type(path)
+        mime = (mime or "").lower()
+
+        # 1. PDF Documents
+        if ext == ".pdf" or mime == "application/pdf":
+            return ("pdf", "application/pdf", 50)
+
+        # 2. Video Files
+        video_exts = {
+            ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".3gp"
+        }
+        if ext in video_exts or mime.startswith("video/"):
+            return ("video", mime or f"video/{ext.lstrip('.')}", 75)
+
+        # 3. Image Files
+        image_exts = {
+            ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".avif", ".gif", ".ico"
+        }
+        if ext in image_exts or mime.startswith("image/"):
+            return ("image", mime or f"image/{ext.lstrip('.')}", 60)
+
+        # 4. Standard Documents (like .docx, .txt, .xlsx, .pptx, etc.)
+        doc_exts = {
+            ".docx", ".doc", ".xlsx", ".xls", ".pptx", ".ppt", ".txt", ".csv",
+            ".rtf", ".odt", ".ods", ".odp", ".json", ".xml", ".md", ".log",
+            ".yaml", ".yml", ".tsv"
+        }
+        if ext in doc_exts or (mime and (
+            "officedocument" in mime
+            or "msword" in mime
+            or "excel" in mime
+            or "powerpoint" in mime
+            or "opendocument" in mime
+            or mime.startswith("text/")
+        )):
+            return ("document", mime or "application/zip", 50)
+
+        # 5. Unsupported Files (apps, executables, unknown binaries/extensions)
+        return ("unsupported", mime or "application/octet-stream", 0)
 
     def _setup_ui(self) -> None:
         outer_layout = QVBoxLayout(self)
         outer_layout.setContentsMargins(10, 10, 10, 10)
 
         # Light/translucent milky background (#f7f7f7) with rounded corners and subtle border
-        container = QFrame()
-        container.setObjectName("compressContainer")
-        container.setStyleSheet("""
+        self.container = QFrame()
+        self.container.setObjectName("compressContainer")
+        self.container.setStyleSheet("""
             #compressContainer {
                 background-color: #f7f7f7;
                 border: 1px solid rgba(0, 0, 0, 0.12);
@@ -701,7 +825,7 @@ class CompressDialog(QDialog):
             }
         """)
 
-        layout = QVBoxLayout(container)
+        layout = QVBoxLayout(self.container)
         layout.setContentsMargins(20, 18, 20, 18)
         layout.setSpacing(11)
 
@@ -758,9 +882,33 @@ class CompressDialog(QDialog):
         # 4. Text: "Output will be at most [Y] KB" (calculated dynamically)
         self.est_size_label = QLabel()
         self.est_size_label.setStyleSheet("font-size: 13px; font-weight: 500; color: #222222;")
+        layout.addWidget(self.est_size_label)
+
+        # Smart Quality Warning (Subtle Tangerine Orange text, hidden by default)
+        self.warning_label = QLabel("Warning: High compression may significantly degrade quality.")
+        self.warning_label.setStyleSheet("color: #FF7A00; font-size: 11px; font-weight: 600; margin-top: 1px;")
+        self.warning_label.setWordWrap(True)
+        self.warning_label.hide()
+        layout.addWidget(self.warning_label)
+
+        # Graceful UI Error Label (Red text with soft background)
+        self.error_label = QLabel()
+        self.error_label.setStyleSheet("""
+            color: #d32f2f;
+            font-size: 11.5px;
+            font-weight: 600;
+            background: rgba(255, 59, 48, 0.08);
+            border: 1px solid rgba(255, 59, 48, 0.22);
+            border-radius: 6px;
+            padding: 5px 8px;
+        """)
+        self.error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.error_label.setWordWrap(True)
+        self.error_label.hide()
+        layout.addWidget(self.error_label)
+
         self._on_slider_changed(50)
         self.slider.valueChanged.connect(self._on_slider_changed)
-        layout.addWidget(self.est_size_label)
 
         layout.addStretch()
 
@@ -788,8 +936,8 @@ class CompressDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        compress_btn = QPushButton("Compress")
-        compress_btn.setStyleSheet("""
+        self.compress_btn = QPushButton("Compress")
+        self.compress_btn.setStyleSheet("""
             QPushButton {
                 background-color: #ff5500;
                 color: white;
@@ -805,19 +953,95 @@ class CompressDialog(QDialog):
             QPushButton:pressed {
                 background-color: #e04b00;
             }
+            QPushButton:disabled {
+                background-color: rgba(0, 0, 0, 0.15);
+                color: rgba(0, 0, 0, 0.35);
+            }
         """)
-        compress_btn.clicked.connect(self._on_compress)
-        btn_row.addWidget(compress_btn)
+        self.compress_btn.clicked.connect(self._on_compress)
+        btn_row.addWidget(self.compress_btn)
 
         layout.addLayout(btn_row)
-        outer_layout.addWidget(container)
+
+        # Glass-morphism loading overlay inside modal with spinner (Strictly English)
+        self.loading_overlay = QFrame(self.container)
+        self.loading_overlay.setObjectName("compressLoadingOverlay")
+        self.loading_overlay.setStyleSheet("""
+            #compressLoadingOverlay {
+                background-color: rgba(247, 247, 247, 0.94);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+                font-size: 13px;
+                font-weight: 700;
+            }
+            QProgressBar {
+                background: rgba(0, 0, 0, 0.08);
+                border-radius: 3px;
+                height: 6px;
+                border: none;
+            }
+            QProgressBar::chunk {
+                background: #ff5500;
+                border-radius: 3px;
+            }
+        """)
+        overlay_layout = QVBoxLayout(self.loading_overlay)
+        overlay_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.setSpacing(12)
+
+        loading_text = QLabel("Processing...")
+        loading_text.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.addWidget(loading_text)
+
+        prog_bar = QProgressBar()
+        prog_bar.setRange(0, 0)  # indeterminate animation
+        prog_bar.setTextVisible(False)
+        prog_bar.setFixedWidth(200)
+        overlay_layout.addWidget(prog_bar, alignment=Qt.AlignmentFlag.AlignCenter)
+
+        self.loading_overlay.hide()
+
+        outer_layout.addWidget(self.container)
+
+        # Check for unsupported file type or document category on init
+        if self._mime_category == "unsupported":
+            self.error_label.setText("Sorry, this file type is not supported for compression.")
+            self.error_label.show()
+            self.compress_btn.setEnabled(False)
+            self.slider.setEnabled(False)
+            self.est_size_label.setText("Unsupported file format")
+            self.est_size_label.setStyleSheet("font-size: 12px; color: #d32f2f;")
+        elif self._mime_category == "document":
+            self.est_size_label.setText("Will be compressed into a standard .zip archive")
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "loading_overlay") and hasattr(self, "container"):
+            self.loading_overlay.setGeometry(self.container.rect())
 
     def _on_slider_changed(self, value: int) -> None:
         """Update Reduce by and estimated size: original_size_kb * ((100 - slider_value) / 100)."""
         self.reduce_label.setText(f"Reduce by: {value}%")
-        orig_kb = self._original_size / 1024.0
-        est_kb = orig_kb * ((100 - value) / 100.0)
-        self.est_size_label.setText(f"Output will be at most {est_kb:.1f} KB")
+        if self._mime_category == "document":
+            self.est_size_label.setText("Will be compressed into a standard .zip archive")
+        else:
+            orig_kb = self._original_size / 1024.0
+            est_kb = orig_kb * ((100 - value) / 100.0)
+            if est_kb >= 1024.0:
+                est_mb = est_kb / 1024.0
+                self.est_size_label.setText(f"Output will be at most {est_mb:.2f} MB (~{est_kb:.0f} KB)")
+            else:
+                self.est_size_label.setText(f"Output will be at most {est_kb:.1f} KB")
+
+        # Smart Quality Warning dynamic visibility check based on MIME threshold
+        if hasattr(self, "warning_label"):
+            if self._mime_category != "unsupported" and value > self._warning_threshold:
+                self.warning_label.show()
+            else:
+                self.warning_label.hide()
 
     def _center_on_screen(self) -> None:
         """Center the dialog on the primary display."""
@@ -828,57 +1052,290 @@ class CompressDialog(QDialog):
             y = (geo.height() - self.height()) // 2
             self.move(x, y)
 
-    def _on_compress(self) -> None:
-        """Compress the image preserving original format, extension, and transparency."""
-        slider_val = self.slider.value()
-        try:
-            # 1. Detect Original Format: Extract original file's extension
-            dir_name = os.path.dirname(self.file_path)
-            base_name, ext = os.path.splitext(os.path.basename(self.file_path))
-            ext_lower = ext.lower()
+    @staticmethod
+    def _do_compress_document(input_path: str, output_path: str = "") -> str:
+        """Compress standard documents (like .docx, .txt, .xlsx) into a standard .zip archive with unique versioning."""
+        if not output_path:
+            dir_name = os.path.dirname(input_path)
+            base_name = os.path.splitext(os.path.basename(input_path))[0]
+            output_path = get_unique_filename(os.path.join(dir_name, f"{base_name}_compressed.zip"))
+        else:
+            output_path = get_unique_filename(output_path)
 
-            # The output MUST keep this exact same extension
-            output_path = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+        with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+            zipf.write(input_path, arcname=os.path.basename(input_path))
+        return output_path
 
-            # Prevent overwriting if source file is already named *_compressed.*
-            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
-                output_path = os.path.join(
-                    dir_name, f"{base_name}_opt{ext}"
-                )
+    @staticmethod
+    def _do_compress_image(input_path: str, output_path: str, slider_val: int) -> None:
+        """
+        Pillow-based image compression strictly mapped to slider percentage:
+          - Target quality: quality = max(5, min(95, int(100 - slider_val)))
+          - E.g., if slider says reduce by 60%, quality = 40.
+          - PNG: dynamic color quantization palette based on 100 - slider_val.
+        """
+        ext_lower = os.path.splitext(input_path)[1].lower()
+        # Direct mathematical mapping: slider 60% reduction -> quality 40
+        target_quality = max(5, min(95, int(100 - slider_val)))
 
-            with Image.open(self.file_path) as img:
-                # 2. If the original is PNG (or has transparency 'RGBA')
-                if ext_lower == ".png" or img.mode in ("RGBA", "LA", "PA") or ("transparency" in img.info):
-                    # DO NOT convert it to 'RGB'. Keep the transparency.
-                    # To compress a PNG using the 1-100 slider, reduce its color palette (Quantize).
-                    num_colors = max(8, int(256 * (slider_val / 100)))
-                    img = img.quantize(colors=num_colors)
-                    img.save(output_path, "PNG", optimize=True)
-                # 3. If the original is JPEG/JPG
-                elif ext_lower in (".jpg", ".jpeg"):
-                    # Convert to safe RGB
+        with Image.open(input_path) as img:
+            # Preserve transparency for PNG / RGBA
+            if ext_lower == ".png" or img.mode in ("RGBA", "LA", "PA") or ("transparency" in img.info):
+                num_colors = max(8, min(256, int(256 * ((100 - slider_val) / 100.0))))
+                quantized = img.quantize(colors=num_colors)
+                quantized.save(output_path, "PNG", optimize=True, compress_level=9)
+            elif ext_lower in (".jpg", ".jpeg"):
+                if img.mode not in ("RGB", "L"):
+                    img = img.convert("RGB")
+                img.save(output_path, "JPEG", quality=target_quality, optimize=True)
+            elif ext_lower == ".webp":
+                img.save(output_path, "WEBP", quality=target_quality, method=6)
+            else:
+                fmt = img.format or "PNG"
+                if fmt.upper() in ("JPEG", "JPG", "BMP"):
                     if img.mode not in ("RGB", "L"):
                         img = img.convert("RGB")
-                    img.save(output_path, "JPEG", quality=slider_val)
-                elif ext_lower == ".webp":
-                    img.save(output_path, "WEBP", quality=slider_val)
+                    img.save(output_path, format=fmt, quality=target_quality)
                 else:
-                    # Fallback for other formats, keeping same extension
-                    fmt = img.format or "PNG"
-                    if fmt.upper() in ("JPEG", "JPG", "BMP"):
-                        if img.mode not in ("RGB", "L"):
-                            img = img.convert("RGB")
-                        img.save(output_path, format=fmt, quality=slider_val)
-                    else:
-                        img.save(output_path, format=fmt)
+                    img.save(output_path, format=fmt, optimize=True)
 
-            print(
-                f"[QuickDrop] Compressed '{self.file_path}' -> '{output_path}'"
+    @staticmethod
+    def _do_compress_video(input_path: str, output_path: str, slider_val: int) -> None:
+        """
+        Compress video using FFmpeg.
+        Strictly maps slider percentage dynamically to CRF and audio bitrate:
+          - Slider 1% reduction  -> CRF 18 (visually lossless)
+          - Slider 50% reduction -> CRF 33 (balanced web compression)
+          - Slider 99% reduction -> CRF 48 (maximum compression)
+        """
+        ffmpeg_bin = shutil.which("ffmpeg")
+        if not ffmpeg_bin:
+            err_msg = (
+                "FFmpeg is required to compress video files.\n\n"
+                "Please install FFmpeg and make sure it is in your system PATH:\n"
+                "  • Ubuntu/Debian: sudo apt install ffmpeg\n"
+                "  • Fedora:        sudo dnf install ffmpeg\n"
+                "  • macOS:         brew install ffmpeg\n"
+                "  • Windows:       winget install ffmpeg"
             )
-            self.accept()
-        except Exception as e:
-            print(f"[QuickDrop ERROR] Failed to compress '{self.file_path}': {e}")
-            self.reject()
+            raise RuntimeError(err_msg)
+
+        # Dynamic CRF mapping from slider reduction percentage (1-99) to CRF (18-48)
+        # Higher reduction percentage = higher CRF value (smaller size, lower bitrate)
+        crf = int(18 + (slider_val / 100.0) * 30)
+
+        # Dynamic audio bitrate reduction
+        if slider_val >= 75:
+            audio_bitrate = "64k"
+        elif slider_val >= 50:
+            audio_bitrate = "96k"
+        else:
+            audio_bitrate = "128k"
+
+        cmd = [
+            ffmpeg_bin,
+            "-y",
+            "-i", input_path,
+            "-c:v", "libx264",
+            "-crf", str(crf),
+            "-preset", "faster",
+            "-c:a", "aac",
+            "-b:a", audio_bitrate,
+            "-movflags", "+faststart",
+            output_path,
+        ]
+
+        kwargs = {
+            "stdout": subprocess.PIPE,
+            "stderr": subprocess.PIPE,
+            "text": True,
+        }
+        if os.name == "nt":
+            startupinfo = subprocess.STARTUPINFO()
+            startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+            kwargs["startupinfo"] = startupinfo
+
+        proc = subprocess.run(cmd, **kwargs)
+        if proc.returncode != 0:
+            err_details = proc.stderr[-300:] if proc.stderr else "Unknown error"
+            raise RuntimeError(f"FFmpeg compression failed: {err_details}")
+
+    @staticmethod
+    def _do_compress_pdf(input_path: str, output_path: str, slider_val: int) -> None:
+        """
+        Compress PDF files using PyMuPDF (fitz) or Ghostscript fallback chain.
+        Strictly maps slider percentage to image downsampling DPI/quality inside the PDF:
+          - Target quality: quality = max(10, min(95, int(100 - slider_val)))
+          - Image downsampling scale: scale_factor = max(0.25, min(1.0, (100 - slider_val * 0.75) / 100.0))
+          - Target resolution DPI for Ghostscript: 300 down to 72 DPI
+        """
+        target_quality = max(10, min(95, int(100 - slider_val)))
+        scale_factor = max(0.25, min(1.0, (100 - slider_val * 0.75) / 100.0))
+
+        # Tier 1: PyMuPDF (fitz) with dynamic image downsampling and stream compression
+        try:
+            try:
+                import pymupdf as fitz
+            except ImportError:
+                import fitz
+            doc = fitz.open(input_path)
+            processed_xrefs = set()
+
+            for page in doc:
+                try:
+                    for img_info in page.get_images():
+                        xref = img_info[0]
+                        if xref in processed_xrefs:
+                            continue
+                        processed_xrefs.add(xref)
+                        try:
+                            base_img = doc.extract_image(xref)
+                            if not base_img or not base_img.get("image"):
+                                continue
+
+                            pil_img = Image.open(io.BytesIO(base_img["image"]))
+                            # Downsample image dimensions if reduction is significant or image is high resolution
+                            if slider_val >= 35 and (pil_img.width > 500 or pil_img.height > 500):
+                                new_w = max(100, int(pil_img.width * scale_factor))
+                                new_h = max(100, int(pil_img.height * scale_factor))
+                                pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                            out_buf = io.BytesIO()
+                            if pil_img.mode in ("RGBA", "LA", "P"):
+                                if slider_val >= 60:
+                                    num_colors = max(8, min(256, int(256 * ((100 - slider_val) / 100.0))))
+                                    quantized = pil_img.quantize(colors=num_colors)
+                                    quantized.save(out_buf, format="PNG", optimize=True)
+                                else:
+                                    pil_img.save(out_buf, format="PNG", optimize=True)
+                            else:
+                                if pil_img.mode not in ("RGB", "L"):
+                                    pil_img = pil_img.convert("RGB")
+                                pil_img.save(out_buf, format="JPEG", quality=target_quality, optimize=True)
+
+                            page.replace_image(xref, stream=out_buf.getvalue())
+                        except Exception as img_err:
+                            print(f"[QuickDrop] Non-critical image downsample error in PDF: {img_err}")
+                except Exception as page_err:
+                    print(f"[QuickDrop] Error scanning page images: {page_err}")
+
+            doc.save(output_path, garbage=4, deflate=True, clean=True)
+            doc.close()
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return
+        except Exception as fitz_err:
+            print(f"[QuickDrop] PyMuPDF compression fallback failed: {fitz_err}")
+
+        # Tier 2: Ghostscript with exact downsampling DPI mapped from slider
+        gs_bin = shutil.which("gs") or shutil.which("gswin64c") or shutil.which("gswin32c")
+        if gs_bin:
+            # Map slider_val (1-99) to target DPI (300 down to 72)
+            target_dpi = int(300 - (slider_val / 100.0) * 228)
+            pdf_setting = "/screen" if slider_val >= 70 else ("/ebook" if slider_val >= 40 else "/printer")
+            gs_cmd = [
+                gs_bin,
+                "-sDEVICE=pdfwrite",
+                "-dCompatibilityLevel=1.4",
+                f"-dPDFSETTINGS={pdf_setting}",
+                "-dColorImageDownsampleType=/Bicubic",
+                f"-dColorImageResolution={target_dpi}",
+                "-dGrayImageDownsampleType=/Bicubic",
+                f"-dGrayImageResolution={target_dpi}",
+                "-dMonoImageDownsampleType=/Bicubic",
+                f"-dMonoImageResolution={target_dpi}",
+                "-dNOPAUSE",
+                "-dQUIET",
+                "-dBATCH",
+                f"-sOutputFile={output_path}",
+                input_path,
+            ]
+            try:
+                proc = subprocess.run(
+                    gs_cmd,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                if proc.returncode == 0 and os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                    return
+            except Exception as gs_err:
+                print(f"[QuickDrop] Ghostscript execution failed: {gs_err}")
+
+        # Tier 3: PyPDF2 fallback
+        try:
+            from PyPDF2 import PdfReader, PdfWriter
+            reader = PdfReader(input_path)
+            writer = PdfWriter()
+            for page in reader.pages:
+                page.compress_content_streams()
+                writer.add_page(page)
+            with open(output_path, "wb") as f_out:
+                writer.write(f_out)
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                return
+        except Exception as pypdf_err:
+            print(f"[QuickDrop] PyPDF2 compression fallback failed: {pypdf_err}")
+
+        raise RuntimeError("Could not compress the PDF file. No suitable compression engine succeeded.")
+
+    # Convenience aliases
+    _compress_image = _do_compress_image
+    _compress_video = _do_compress_video
+    _compress_pdf = _do_compress_pdf
+    _compress_document = _do_compress_document
+
+    def _on_compress(self) -> None:
+        """Asynchronously compress the file according to its detected format with unique output path."""
+        if self._mime_category == "unsupported":
+            self.error_label.setText("Sorry, this file type is not supported for compression.")
+            self.error_label.show()
+            return
+
+        slider_val = self.slider.value()
+        dir_name = os.path.dirname(self.file_path)
+        base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+
+        if self._mime_category == "document":
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed.zip")
+        else:
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+
+        # Ensure unique filename to prevent overwriting existing files
+        output_path = get_unique_filename(target_initial)
+
+        # Show glass-morphism loading overlay immediately
+        self.loading_overlay.setGeometry(self.container.rect())
+        self.loading_overlay.show()
+        self.loading_overlay.raise_()
+        self.error_label.hide()
+        self.compress_btn.setEnabled(False)
+
+        # Launch background worker thread for large files
+        self._worker = CompressionWorker(
+            self.file_path, output_path, self._mime_category, slider_val, self
+        )
+        self._worker.compression_success.connect(self._on_compression_success)
+        self._worker.compression_failed.connect(self._on_compression_failed)
+        self._worker.start()
+
+    def _on_compression_success(self, output_path: str) -> None:
+        self.loading_overlay.hide()
+        self.compress_btn.setEnabled(True)
+        print(f"[QuickDrop] Compressed '{self.file_path}' -> '{output_path}'")
+        if self.parent() and hasattr(self.parent(), "page"):
+            resp = json.dumps({"status": "success", "output_path": output_path, "message": "Compressed successfully."}, ensure_ascii=False)
+            self.parent().page().runJavaScript(f"if (window.handleCompressResponse) window.handleCompressResponse({resp});")
+        self.accept()
+
+    def _on_compression_failed(self, error_msg: str) -> None:
+        self.loading_overlay.hide()
+        self.compress_btn.setEnabled(True)
+        print(f"[QuickDrop ERROR] Failed to compress '{self.file_path}': {error_msg}")
+        self.error_label.setText(error_msg or "Sorry, this file type is not supported for compression.")
+        self.error_label.show()
+        if self.parent() and hasattr(self.parent(), "page"):
+            resp = json.dumps({"status": "error", "message": error_msg or "Sorry, this file type is not supported for compression."}, ensure_ascii=False)
+            self.parent().page().runJavaScript(f"if (window.handleCompressResponse) window.handleCompressResponse({resp});")
 
     # Window drag support for frameless window
     def mousePressEvent(self, event) -> None:  # noqa: N802
@@ -7736,6 +8193,65 @@ class QuickDropBridge(QObject):
             self.window._tray_icon.hide()
         QApplication.quit()
 
+    @QtCore.pyqtSlot(str, int, result=str)
+    @QtCore.pyqtSlot(str, result=str)
+    def compress_file(self, file_path: str, slider_val: int = 50) -> str:
+        """Exposes file compression to web interface with validation and async handling."""
+        print(f"[QuickDrop] compress_file requested via bridge for: {file_path}")
+        category, mime, _ = CompressDialog.detect_category(file_path)
+        if category == "unsupported":
+            resp = {
+                "status": "error",
+                "message": "Sorry, this file type is not supported for compression."
+            }
+            resp_json = json.dumps(resp, ensure_ascii=False)
+            self.window.page().runJavaScript(
+                f"if (window.handleCompressResponse) window.handleCompressResponse({resp_json});"
+            )
+            return resp_json
+
+        dir_name = os.path.dirname(file_path)
+        base_name, ext = os.path.splitext(os.path.basename(file_path))
+        if category == "document":
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed.zip")
+        else:
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+
+        # Unique filename ensures multiple compressions never overwrite previous versions
+        output_path = get_unique_filename(target_initial)
+
+        def run_worker():
+            try:
+                if category == "document":
+                    out = CompressDialog._do_compress_document(file_path, output_path)
+                elif category == "video":
+                    CompressDialog._do_compress_video(file_path, output_path, slider_val)
+                    out = output_path
+                elif category == "pdf":
+                    CompressDialog._do_compress_pdf(file_path, output_path, slider_val)
+                    out = output_path
+                else:
+                    CompressDialog._do_compress_image(file_path, output_path, slider_val)
+                    out = output_path
+
+                resp = {
+                    "status": "success",
+                    "output_path": out,
+                    "message": "Compressed successfully."
+                }
+            except Exception as e:
+                resp = {
+                    "status": "error",
+                    "message": str(e) or "Sorry, this file type is not supported for compression."
+                }
+            resp_json = json.dumps(resp, ensure_ascii=False)
+            self.window.page().runJavaScript(
+                f"if (window.handleCompressResponse) window.handleCompressResponse({resp_json});"
+            )
+
+        threading.Thread(target=run_worker, daemon=True).start()
+        return json.dumps({"status": "processing"})
+
     @QtCore.pyqtSlot(list, str)
     def drop_files_action(self, file_paths: list, action_name: str) -> None:
         """Handle dropped files with a specific target action from WebChannel."""
@@ -7945,6 +8461,18 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         if act_upper == "COMPRESS":
             for path in file_paths:
+                category, mime, _ = CompressDialog.detect_category(path)
+                if category == "unsupported":
+                    err_payload = {
+                        "status": "error",
+                        "message": "Sorry, this file type is not supported for compression."
+                    }
+                    print(f"[QuickDrop] Unsupported file for compression: {path}")
+                    err_json = json.dumps(err_payload, ensure_ascii=False)
+                    self.page().runJavaScript(
+                        f"if (window.handleCompressResponse) window.handleCompressResponse({err_json}); else if (window.showToast) window.showToast({err_json}.message, 'error');"
+                    )
+                    continue
                 dialog = CompressDialog(path, self)
                 dialog.show()
                 self._dialogs.append(dialog)
@@ -8127,11 +8655,20 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
             self._open_record()
             return
 
-        file_filter = (
-            "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
-            if act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "COMPRESS", "CROP", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT")
-            else "All Files (*.*);;All Files (*)"
-        )
+        if act_upper == "COMPRESS":
+            file_filter = (
+                "All Supported (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif *.mp4 *.mov *.avi *.mkv *.webm *.pdf);;"
+                "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;"
+                "Videos (*.mp4 *.mov *.avi *.mkv *.webm);;"
+                "PDF Documents (*.pdf);;"
+                "All Files (*.*);;All Files (*)"
+            )
+        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "CROP", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT"):
+            file_filter = (
+                "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
+            )
+        else:
+            file_filter = "All Files (*.*);;All Files (*)"
 
         file_path, _ = QFileDialog.getOpenFileName(
             self,
