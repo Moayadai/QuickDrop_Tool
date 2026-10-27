@@ -713,7 +713,9 @@ class CompressionWorker(QThread):
             if self.category == "document":
                 out = CompressDialog._do_compress_document(self.file_path, self.output_path, self.slider_val)
             elif self.category == "video":
-                CompressDialog._do_compress_video(self.file_path, self.output_path, self.slider_val)
+                res = CompressDialog._do_compress_video(self.file_path, self.output_path, self.slider_val)
+                if isinstance(res, dict) and res.get("status") == "error":
+                    raise RuntimeError(res.get("message", "FFmpeg crashed. Check terminal logs."))
                 out = self.output_path
             elif self.category == "pdf":
                 CompressDialog._do_compress_pdf(self.file_path, self.output_path, self.slider_val)
@@ -1209,26 +1211,28 @@ class CompressDialog(QDialog):
                     img.save(output_path, format=fmt, optimize=True)
 
     @staticmethod
-    def _do_compress_video(input_path: str, output_path: str, slider_val: int) -> None:
+    def _do_compress_video(input_path: str, output_path: str, slider_val: int) -> dict:
         """
         Compress video using real FFmpeg re-encoding.
-        Strictly re-encodes using libx264 with dynamic CRF mapped from slider_val.
-        NEVER performs file copy, renaming, or fake success.
-        If FFmpeg is missing or subprocess.run fails, raises RuntimeError:
-        'Compression failed. Ensure FFmpeg is installed.'
+        Strictly re-encodes using libx264 with dynamic CRF mapped from slider_val,
+        and forces AAC audio at 128k to avoid container codec crashes.
+        Prints full command and raw FFmpeg stderr logs to the terminal for debugging.
+        Handles non-zero exit codes and enforces Anti-Corruption sanity check.
         """
         if not shutil.which("ffmpeg"):
-            raise RuntimeError("Compression failed. Ensure FFmpeg is installed.")
+            return {"status": "error", "message": "Compression failed. Ensure FFmpeg is installed."}
 
-        # Mathematically map reduce_by percentage to target_crf:
+        # Mathematically map reduce_by percentage to crf_value:
         # Base CRF is 23. E.g., 50% -> 30, 90% -> 40. The size MUST reduce!
         if slider_val <= 50:
-            target_crf = int(round(23 + (slider_val / 50.0) * 7))
+            crf_value = int(round(23 + (slider_val / 50.0) * 7))
         else:
-            target_crf = int(round(30 + ((slider_val - 50) / 40.0) * 10))
-        target_crf = max(18, min(51, target_crf))
+            crf_value = int(round(30 + ((slider_val - 50) / 40.0) * 10))
+        crf_value = max(18, min(51, int(crf_value)))
 
-        cmd = [
+        # 4. Fix CRF Type Casting: str(int(crf_value))
+        # 3. Bulletproof FFmpeg Command Array: forces AAC audio
+        command = [
             "ffmpeg",
             "-y",
             "-i",
@@ -1236,15 +1240,21 @@ class CompressDialog(QDialog):
             "-vcodec",
             "libx264",
             "-crf",
-            str(target_crf),
+            str(int(crf_value)),
             "-preset",
             "fast",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "128k",
             output_path,
         ]
 
+        # 1. Expose the Exact Command to terminal
+        print(f"[QuickDrop DEBUG] FFMPEG COMMAND: {' '.join(command)}")
+
         kwargs = {
-            "stdout": subprocess.PIPE,
-            "stderr": subprocess.PIPE,
+            "capture_output": True,
             "text": True,
         }
         if os.name == "nt":
@@ -1252,24 +1262,41 @@ class CompressDialog(QDialog):
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             kwargs["startupinfo"] = startupinfo
 
+        # 2. Capture and Force-Print ALL FFmpeg Logs (without check=True)
         try:
-            proc = subprocess.run(cmd, **kwargs)
-            if proc.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                if os.path.exists(output_path):
-                    try:
-                        os.remove(output_path)
-                    except OSError:
-                        pass
-                raise RuntimeError("Compression failed. Ensure FFmpeg is installed.")
+            result = subprocess.run(command, **kwargs)
         except Exception as exc:
             if os.path.exists(output_path):
                 try:
                     os.remove(output_path)
                 except OSError:
                     pass
-            if isinstance(exc, RuntimeError) and str(exc) == "Compression failed. Ensure FFmpeg is installed.":
-                raise
-            raise RuntimeError("Compression failed. Ensure FFmpeg is installed.") from exc
+            print(f"[QuickDrop DEBUG] SUBPROCESS EXCEPTION: {exc}")
+            return {"status": "error", "message": "FFmpeg crashed. Check terminal logs."}
+
+        # IMMEDIATELY after subprocess finishes, force print the stderr
+        print(f"[QuickDrop DEBUG] FFMPEG LOGS:\n{result.stderr}")
+
+        # 3. Handle Non-Zero Exit Codes
+        if result.returncode != 0:
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            return {"status": "error", "message": "FFmpeg crashed. Check terminal logs."}
+
+        # The Relaxed Anti-Corruption Check (empty / tiny file check):
+        # If output file does not exist or is less than 10 KB (10240 bytes), consider it corrupted or empty.
+        if not os.path.exists(output_path) or os.path.getsize(output_path) < 10240:
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            return {"status": "error", "message": "Compression failed. Output file is corrupted or empty."}
+
+        return {"status": "success", "output_path": output_path}
 
     @staticmethod
     def _do_compress_pdf(input_path: str, output_path: str, slider_val: int = 50) -> None:
@@ -8297,7 +8324,9 @@ class QuickDropBridge(QObject):
                 if category == "document":
                     out = CompressDialog._do_compress_document(file_path, output_path, slider_val)
                 elif category == "video":
-                    CompressDialog._do_compress_video(file_path, output_path, slider_val)
+                    res = CompressDialog._do_compress_video(file_path, output_path, slider_val)
+                    if isinstance(res, dict) and res.get("status") == "error":
+                        raise RuntimeError(res.get("message", "FFmpeg crashed. Check terminal logs."))
                     out = output_path
                 elif category == "pdf":
                     CompressDialog._do_compress_pdf(file_path, output_path, slider_val)
