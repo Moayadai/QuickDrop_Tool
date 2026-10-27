@@ -17,6 +17,7 @@ import random
 import shutil
 import socket
 import subprocess
+import tempfile
 import threading
 import time
 import urllib.parse
@@ -666,6 +667,25 @@ def get_unique_filename(target_path: str) -> str:
         counter += 1
 
 
+def _enforce_compression_sanity_check(orig_path: str, output_path: str) -> None:
+    """
+    The Ultimate Sanity Check (CRITICAL FAIL-SAFE):
+    Compare os.path.getsize(output_path) with original size.
+    If new file >= original: delete output_path immediately via os.remove(output_path)
+    and return error: 'File is already highly compressed. Further compression would increase size.'
+    """
+    if not os.path.exists(output_path):
+        raise RuntimeError("Compression failed: Output file was not generated.")
+    orig_size = os.path.getsize(orig_path) if os.path.exists(orig_path) else 0
+    new_size = os.path.getsize(output_path)
+    if orig_size > 0 and new_size >= orig_size:
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+        raise ValueError("File is already highly compressed. Further compression would increase size.")
+
+
 class CompressionWorker(QThread):
     """Background worker thread for asynchronous media & document compression."""
 
@@ -691,19 +711,23 @@ class CompressionWorker(QThread):
         self.started_processing.emit()
         try:
             if self.category == "document":
-                out = CompressDialog._do_compress_document(self.file_path, self.output_path)
-                self.compression_success.emit(out)
+                out = CompressDialog._do_compress_document(self.file_path, self.output_path, self.slider_val)
             elif self.category == "video":
                 CompressDialog._do_compress_video(self.file_path, self.output_path, self.slider_val)
-                self.compression_success.emit(self.output_path)
+                out = self.output_path
             elif self.category == "pdf":
                 CompressDialog._do_compress_pdf(self.file_path, self.output_path, self.slider_val)
-                self.compression_success.emit(self.output_path)
+                out = self.output_path
             elif self.category == "image":
                 CompressDialog._do_compress_image(self.file_path, self.output_path, self.slider_val)
-                self.compression_success.emit(self.output_path)
+                out = self.output_path
             else:
                 raise ValueError("Sorry, this file type is not supported for compression.")
+
+            # The Ultimate Sanity Check (CRITICAL FAIL-SAFE)
+            _enforce_compression_sanity_check(self.file_path, out)
+
+            self.compression_success.emit(out)
         except Exception as exc:
             self.compression_failed.emit(str(exc))
 
@@ -1015,7 +1039,11 @@ class CompressDialog(QDialog):
             self.est_size_label.setText("Unsupported file format")
             self.est_size_label.setStyleSheet("font-size: 12px; color: #d32f2f;")
         elif self._mime_category == "document":
-            self.est_size_label.setText("Will be compressed into a standard .zip archive")
+            ext = os.path.splitext(self.file_path)[1].lower()
+            if ext in (".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"):
+                self.est_size_label.setText(f"Deep Office media compression ({ext})")
+            else:
+                self.est_size_label.setText("Will be compressed into a standard .zip archive")
 
     def resizeEvent(self, event) -> None:  # noqa: N802
         super().resizeEvent(event)
@@ -1026,7 +1054,17 @@ class CompressDialog(QDialog):
         """Update Reduce by and estimated size: original_size_kb * ((100 - slider_value) / 100)."""
         self.reduce_label.setText(f"Reduce by: {value}%")
         if self._mime_category == "document":
-            self.est_size_label.setText("Will be compressed into a standard .zip archive")
+            ext = os.path.splitext(self.file_path)[1].lower()
+            if ext in (".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"):
+                orig_kb = self._original_size / 1024.0
+                est_kb = orig_kb * ((100 - value) / 100.0)
+                if est_kb >= 1024.0:
+                    est_mb = est_kb / 1024.0
+                    self.est_size_label.setText(f"Output will be at most {est_mb:.2f} MB (~{est_kb:.0f} KB)")
+                else:
+                    self.est_size_label.setText(f"Output will be at most {est_kb:.1f} KB")
+            else:
+                self.est_size_label.setText("Will be compressed into a standard .zip archive")
         else:
             orig_kb = self._original_size / 1024.0
             est_kb = orig_kb * ((100 - value) / 100.0)
@@ -1053,37 +1091,108 @@ class CompressDialog(QDialog):
             self.move(x, y)
 
     @staticmethod
-    def _do_compress_document(input_path: str, output_path: str = "") -> str:
-        """Compress standard documents (like .docx, .txt, .xlsx) into a standard .zip archive with unique versioning."""
+    def _do_compress_document(input_path: str, output_path: str = "", slider_val: int = 50) -> str:
+        """
+        Deep Office Document Compression (.docx, .pptx, .xlsx, .docm, .pptm, .xlsm):
+          - Extracts into tempfile via zipfile.
+          - Locates internal media folders (word/media/, ppt/media/, xl/media/).
+          - Compresses internal images with Pillow mapped to reduce_by.
+          - Re-archives back into the original extension using zipfile.ZIP_DEFLATED (compresslevel=9).
+        Standard Documents (.txt, .csv, etc.):
+          - Archives into a standard .zip archive using compresslevel=9.
+        """
+        dir_name = os.path.dirname(input_path)
+        base_name, ext = os.path.splitext(os.path.basename(input_path))
+        ext_lower = ext.lower()
+        office_exts = {".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"}
+
         if not output_path:
-            dir_name = os.path.dirname(input_path)
-            base_name = os.path.splitext(os.path.basename(input_path))[0]
-            output_path = get_unique_filename(os.path.join(dir_name, f"{base_name}_compressed.zip"))
+            if ext_lower in office_exts:
+                target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+            else:
+                target_initial = os.path.join(dir_name, f"{base_name}_compressed.zip")
+            output_path = get_unique_filename(target_initial)
         else:
             output_path = get_unique_filename(output_path)
 
-        with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
-            zipf.write(input_path, arcname=os.path.basename(input_path))
+        if ext_lower in office_exts and zipfile.is_zipfile(input_path):
+            temp_dir = tempfile.mkdtemp(prefix="quickdrop_office_")
+            try:
+                with zipfile.ZipFile(input_path, "r") as zip_in:
+                    zip_in.extractall(temp_dir)
+
+                target_quality = max(10, 100 - slider_val)
+
+                # Locate internal media folders (word/media, ppt/media, xl/media)
+                media_dirs = []
+                for root, dirs, _ in os.walk(temp_dir):
+                    if os.path.basename(root).lower() == "media":
+                        media_dirs.append(root)
+
+                image_exts = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+
+                for m_dir in media_dirs:
+                    for img_name in os.listdir(m_dir):
+                        img_path = os.path.join(m_dir, img_name)
+                        if not os.path.isfile(img_path):
+                            continue
+                        img_ext = os.path.splitext(img_name)[1].lower()
+                        if img_ext not in image_exts:
+                            continue
+
+                        try:
+                            with Image.open(img_path) as pil_img:
+                                if img_ext in (".jpg", ".jpeg"):
+                                    if pil_img.mode not in ("RGB", "L"):
+                                        pil_img = pil_img.convert("RGB")
+                                    pil_img.save(img_path, format="JPEG", quality=target_quality, optimize=True)
+                                elif img_ext == ".png":
+                                    if slider_val >= 40 or pil_img.mode in ("RGBA", "LA", "P"):
+                                        num_colors = max(16, min(256, int(256 * ((100 - slider_val) / 100.0))))
+                                        quantized = pil_img.quantize(colors=num_colors)
+                                        quantized.save(img_path, format="PNG", optimize=True, compress_level=9)
+                                    else:
+                                        pil_img.save(img_path, format="PNG", optimize=True, compress_level=9)
+                                elif img_ext == ".webp":
+                                    pil_img.save(img_path, format="WEBP", quality=target_quality, method=6)
+                                else:
+                                    pil_img.save(img_path, optimize=True)
+                        except Exception as img_err:
+                            print(f"[QuickDrop] Non-critical image compression error in Office doc: {img_err}")
+
+                # Re-archive back into the original extension (.docx, .pptx, .xlsx)
+                with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zip_out:
+                    for root, _, files in os.walk(temp_dir):
+                        for file in files:
+                            full_path = os.path.join(root, file)
+                            arcname = os.path.relpath(full_path, temp_dir)
+                            zip_out.write(full_path, arcname=arcname)
+            finally:
+                shutil.rmtree(temp_dir, ignore_errors=True)
+        else:
+            with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zipf:
+                zipf.write(input_path, arcname=os.path.basename(input_path))
+
         return output_path
 
     @staticmethod
     def _do_compress_image(input_path: str, output_path: str, slider_val: int) -> None:
         """
         Pillow-based image compression strictly mapped to slider percentage:
-          - Target quality: quality = max(5, min(95, int(100 - slider_val)))
-          - E.g., if slider says reduce by 60%, quality = 40.
-          - PNG: dynamic color quantization palette based on 100 - slider_val.
+          - Target quality: quality = max(10, 100 - slider_val)
         """
         ext_lower = os.path.splitext(input_path)[1].lower()
-        # Direct mathematical mapping: slider 60% reduction -> quality 40
-        target_quality = max(5, min(95, int(100 - slider_val)))
+        target_quality = max(10, 100 - slider_val)
 
         with Image.open(input_path) as img:
             # Preserve transparency for PNG / RGBA
             if ext_lower == ".png" or img.mode in ("RGBA", "LA", "PA") or ("transparency" in img.info):
-                num_colors = max(8, min(256, int(256 * ((100 - slider_val) / 100.0))))
-                quantized = img.quantize(colors=num_colors)
-                quantized.save(output_path, "PNG", optimize=True, compress_level=9)
+                if slider_val >= 40:
+                    num_colors = max(8, min(256, int(256 * ((100 - slider_val) / 100.0))))
+                    quantized = img.quantize(colors=num_colors)
+                    quantized.save(output_path, "PNG", optimize=True, compress_level=9)
+                else:
+                    img.save(output_path, "PNG", optimize=True, compress_level=9)
             elif ext_lower in (".jpg", ".jpeg"):
                 if img.mode not in ("RGB", "L"):
                     img = img.convert("RGB")
@@ -1102,46 +1211,34 @@ class CompressDialog(QDialog):
     @staticmethod
     def _do_compress_video(input_path: str, output_path: str, slider_val: int) -> None:
         """
-        Compress video using FFmpeg.
-        Strictly maps slider percentage dynamically to CRF and audio bitrate:
-          - Slider 1% reduction  -> CRF 18 (visually lossless)
-          - Slider 50% reduction -> CRF 33 (balanced web compression)
-          - Slider 99% reduction -> CRF 48 (maximum compression)
+        Compress video using real FFmpeg re-encoding.
+        Strictly re-encodes using libx264 with dynamic CRF mapped from slider_val.
+        NEVER performs file copy, renaming, or fake success.
+        If FFmpeg is missing or subprocess.run fails, raises RuntimeError:
+        'Compression failed. Ensure FFmpeg is installed.'
         """
-        ffmpeg_bin = shutil.which("ffmpeg")
-        if not ffmpeg_bin:
-            err_msg = (
-                "FFmpeg is required to compress video files.\n\n"
-                "Please install FFmpeg and make sure it is in your system PATH:\n"
-                "  • Ubuntu/Debian: sudo apt install ffmpeg\n"
-                "  • Fedora:        sudo dnf install ffmpeg\n"
-                "  • macOS:         brew install ffmpeg\n"
-                "  • Windows:       winget install ffmpeg"
-            )
-            raise RuntimeError(err_msg)
+        if not shutil.which("ffmpeg"):
+            raise RuntimeError("Compression failed. Ensure FFmpeg is installed.")
 
-        # Dynamic CRF mapping from slider reduction percentage (1-99) to CRF (18-48)
-        # Higher reduction percentage = higher CRF value (smaller size, lower bitrate)
-        crf = int(18 + (slider_val / 100.0) * 30)
-
-        # Dynamic audio bitrate reduction
-        if slider_val >= 75:
-            audio_bitrate = "64k"
-        elif slider_val >= 50:
-            audio_bitrate = "96k"
+        # Mathematically map reduce_by percentage to target_crf:
+        # Base CRF is 23. E.g., 50% -> 30, 90% -> 40. The size MUST reduce!
+        if slider_val <= 50:
+            target_crf = int(round(23 + (slider_val / 50.0) * 7))
         else:
-            audio_bitrate = "128k"
+            target_crf = int(round(30 + ((slider_val - 50) / 40.0) * 10))
+        target_crf = max(18, min(51, target_crf))
 
         cmd = [
-            ffmpeg_bin,
+            "ffmpeg",
             "-y",
-            "-i", input_path,
-            "-c:v", "libx264",
-            "-crf", str(crf),
-            "-preset", "faster",
-            "-c:a", "aac",
-            "-b:a", audio_bitrate,
-            "-movflags", "+faststart",
+            "-i",
+            input_path,
+            "-vcodec",
+            "libx264",
+            "-crf",
+            str(target_crf),
+            "-preset",
+            "fast",
             output_path,
         ]
 
@@ -1155,81 +1252,48 @@ class CompressDialog(QDialog):
             startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
             kwargs["startupinfo"] = startupinfo
 
-        proc = subprocess.run(cmd, **kwargs)
-        if proc.returncode != 0:
-            err_details = proc.stderr[-300:] if proc.stderr else "Unknown error"
-            raise RuntimeError(f"FFmpeg compression failed: {err_details}")
+        try:
+            proc = subprocess.run(cmd, **kwargs)
+            if proc.returncode != 0 or not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+                if os.path.exists(output_path):
+                    try:
+                        os.remove(output_path)
+                    except OSError:
+                        pass
+                raise RuntimeError("Compression failed. Ensure FFmpeg is installed.")
+        except Exception as exc:
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            if isinstance(exc, RuntimeError) and str(exc) == "Compression failed. Ensure FFmpeg is installed.":
+                raise
+            raise RuntimeError("Compression failed. Ensure FFmpeg is installed.") from exc
 
     @staticmethod
-    def _do_compress_pdf(input_path: str, output_path: str, slider_val: int) -> None:
+    def _do_compress_pdf(input_path: str, output_path: str, slider_val: int = 50) -> None:
         """
-        Compress PDF files using PyMuPDF (fitz) or Ghostscript fallback chain.
-        Strictly maps slider percentage to image downsampling DPI/quality inside the PDF:
-          - Target quality: quality = max(10, min(95, int(100 - slider_val)))
-          - Image downsampling scale: scale_factor = max(0.25, min(1.0, (100 - slider_val * 0.75) / 100.0))
-          - Target resolution DPI for Ghostscript: 300 down to 72 DPI
+        Compress PDF natively using PyMuPDF (fitz) native stream compression.
+        Do NOT rasterize PDF pages into images.
+        STRICTLY use PyMuPDF (fitz) native flags: doc.save(output_path, garbage=4, deflate=True, clean=True).
         """
-        target_quality = max(10, min(95, int(100 - slider_val)))
-        scale_factor = max(0.25, min(1.0, (100 - slider_val * 0.75) / 100.0))
-
-        # Tier 1: PyMuPDF (fitz) with dynamic image downsampling and stream compression
         try:
             try:
                 import pymupdf as fitz
             except ImportError:
                 import fitz
             doc = fitz.open(input_path)
-            processed_xrefs = set()
-
-            for page in doc:
-                try:
-                    for img_info in page.get_images():
-                        xref = img_info[0]
-                        if xref in processed_xrefs:
-                            continue
-                        processed_xrefs.add(xref)
-                        try:
-                            base_img = doc.extract_image(xref)
-                            if not base_img or not base_img.get("image"):
-                                continue
-
-                            pil_img = Image.open(io.BytesIO(base_img["image"]))
-                            # Downsample image dimensions if reduction is significant or image is high resolution
-                            if slider_val >= 35 and (pil_img.width > 500 or pil_img.height > 500):
-                                new_w = max(100, int(pil_img.width * scale_factor))
-                                new_h = max(100, int(pil_img.height * scale_factor))
-                                pil_img = pil_img.resize((new_w, new_h), Image.Resampling.LANCZOS)
-
-                            out_buf = io.BytesIO()
-                            if pil_img.mode in ("RGBA", "LA", "P"):
-                                if slider_val >= 60:
-                                    num_colors = max(8, min(256, int(256 * ((100 - slider_val) / 100.0))))
-                                    quantized = pil_img.quantize(colors=num_colors)
-                                    quantized.save(out_buf, format="PNG", optimize=True)
-                                else:
-                                    pil_img.save(out_buf, format="PNG", optimize=True)
-                            else:
-                                if pil_img.mode not in ("RGB", "L"):
-                                    pil_img = pil_img.convert("RGB")
-                                pil_img.save(out_buf, format="JPEG", quality=target_quality, optimize=True)
-
-                            page.replace_image(xref, stream=out_buf.getvalue())
-                        except Exception as img_err:
-                            print(f"[QuickDrop] Non-critical image downsample error in PDF: {img_err}")
-                except Exception as page_err:
-                    print(f"[QuickDrop] Error scanning page images: {page_err}")
-
             doc.save(output_path, garbage=4, deflate=True, clean=True)
             doc.close()
             if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
                 return
         except Exception as fitz_err:
-            print(f"[QuickDrop] PyMuPDF compression fallback failed: {fitz_err}")
+            print(f"[QuickDrop] PyMuPDF native deflation failed: {fitz_err}")
 
-        # Tier 2: Ghostscript with exact downsampling DPI mapped from slider
+        # Tier 2: Ghostscript fallback if PyMuPDF fails or is missing
         gs_bin = shutil.which("gs") or shutil.which("gswin64c") or shutil.which("gswin32c")
         if gs_bin:
-            # Map slider_val (1-99) to target DPI (300 down to 72)
             target_dpi = int(300 - (slider_val / 100.0) * 228)
             pdf_setting = "/screen" if slider_val >= 70 else ("/ebook" if slider_val >= 40 else "/printer")
             gs_cmd = [
@@ -1294,8 +1358,12 @@ class CompressDialog(QDialog):
         slider_val = self.slider.value()
         dir_name = os.path.dirname(self.file_path)
         base_name, ext = os.path.splitext(os.path.basename(self.file_path))
+        ext_lower = ext.lower()
+        office_exts = {".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"}
 
-        if self._mime_category == "document":
+        if ext_lower in office_exts:
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+        elif self._mime_category == "document":
             target_initial = os.path.join(dir_name, f"{base_name}_compressed.zip")
         else:
             target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
@@ -8212,7 +8280,11 @@ class QuickDropBridge(QObject):
 
         dir_name = os.path.dirname(file_path)
         base_name, ext = os.path.splitext(os.path.basename(file_path))
-        if category == "document":
+        ext_lower = ext.lower()
+        office_exts = {".docx", ".pptx", ".xlsx", ".docm", ".pptm", ".xlsm"}
+        if ext_lower in office_exts:
+            target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
+        elif category == "document":
             target_initial = os.path.join(dir_name, f"{base_name}_compressed.zip")
         else:
             target_initial = os.path.join(dir_name, f"{base_name}_compressed{ext}")
@@ -8223,7 +8295,7 @@ class QuickDropBridge(QObject):
         def run_worker():
             try:
                 if category == "document":
-                    out = CompressDialog._do_compress_document(file_path, output_path)
+                    out = CompressDialog._do_compress_document(file_path, output_path, slider_val)
                 elif category == "video":
                     CompressDialog._do_compress_video(file_path, output_path, slider_val)
                     out = output_path
@@ -8233,6 +8305,9 @@ class QuickDropBridge(QObject):
                 else:
                     CompressDialog._do_compress_image(file_path, output_path, slider_val)
                     out = output_path
+
+                # Enforce Ultimate Sanity Check fail-safe
+                _enforce_compression_sanity_check(file_path, out)
 
                 resp = {
                     "status": "success",
@@ -8657,10 +8732,12 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
 
         if act_upper == "COMPRESS":
             file_filter = (
-                "All Supported (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif *.mp4 *.mov *.avi *.mkv *.webm *.pdf);;"
+                "All Supported (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif *.mp4 *.mov *.avi *.mkv *.webm *.pdf *.docx *.pptx *.xlsx *.txt *.csv);;"
                 "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;"
                 "Videos (*.mp4 *.mov *.avi *.mkv *.webm);;"
                 "PDF Documents (*.pdf);;"
+                "Office Documents (*.docx *.pptx *.xlsx *.docm *.pptm *.xlsm);;"
+                "Standard Documents (*.txt *.csv *.rtf *.json *.xml *.log *.md);;"
                 "All Files (*.*);;All Files (*)"
             )
         elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "CROP", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT"):
@@ -9011,6 +9088,15 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 if len(parts) >= 4 and parts[3] in ("0", "1"):
                     target_state = (parts[3] == "1")
                 self._handle_action_click(action_name, target_state)
+        elif title.startswith("quickdrop:compress:"):
+            parts = title.split(":")
+            if len(parts) >= 4:
+                file_path = parts[2]
+                try:
+                    slider_val = int(parts[3])
+                except (ValueError, TypeError):
+                    slider_val = 50
+                self._bridge.compress_file(file_path, slider_val)
 
     def _handle_action_click(self, action_name: str, target_state: bool | None = None) -> None:
         """Execute click-triggered actions without requiring file drop."""
