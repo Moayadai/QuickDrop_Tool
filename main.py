@@ -108,6 +108,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 from PyQt6.QtWebEngineWidgets import QWebEngineView
+from PyQt6.QtWebEngineCore import QWebEngineSettings
 
 # Compatibility aliases for Qt flags in PyQt6
 for _holder in (QtCore.Qt, Qt):
@@ -1802,23 +1803,481 @@ class InteractiveCropLabel(QWidget):
 CropPreviewWidget = InteractiveCropLabel
 
 
+def get_video_duration(file_path: str) -> float:
+    """Probes video duration in seconds using ffprobe."""
+    try:
+        cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-show_entries", "format=duration",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            file_path
+        ]
+        res = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+        if res.returncode == 0 and res.stdout.strip():
+            return float(res.stdout.strip())
+    except Exception as e:
+        print(f"[QuickDrop] ffprobe duration error for '{file_path}': {e}")
+    return 0.0
+
+
+def format_seconds_to_hhmmss(seconds: float) -> str:
+    """Formats seconds to HH:MM:SS string."""
+    try:
+        s = max(0, int(round(seconds)))
+        hrs = s // 3600
+        mins = (s % 3600) // 60
+        secs = s % 60
+        return f"{hrs:02d}:{mins:02d}:{secs:02d}"
+    except Exception:
+        return "00:00:00"
+
+
 class CropDialog(QDialog):
-    """Frameless light translucent frosted glass image cropping dialog."""
+    """Frameless light translucent frosted glass dialog for spatial image cropping and video trimming."""
+
+    @classmethod
+    def detect_crop_type(cls, path: str) -> str:
+        """
+        Classifies file for CROP tool:
+        - 'image': png, jpg, jpeg, webp, bmp, tiff, tif, heic, avif, gif, ico
+        - 'video': mp4, mov, avi, mkv, webm, flv, wmv, m4v, ts, 3gp
+        - 'unsupported': all others (pdf, docx, zip, exe, etc.)
+        """
+        if not path or not isinstance(path, str):
+            return "unsupported"
+        ext = os.path.splitext(path)[1].lower()
+        mime, _ = mimetypes.guess_type(path)
+        mime = (mime or "").lower()
+
+        video_exts = {
+            ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv", ".wmv", ".m4v", ".ts", ".3gp"
+        }
+        if ext in video_exts or mime.startswith("video/"):
+            return "video"
+
+        image_exts = {
+            ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".avif", ".gif", ".ico"
+        }
+        if ext in image_exts or mime.startswith("image/"):
+            return "image"
+
+        return "unsupported"
+
+    @classmethod
+    def _do_process_video(
+        cls,
+        input_path: str,
+        start_time: str,
+        end_time: str,
+        output_path: str = "",
+        crop_box: tuple[int, int, int, int] | None = None,
+    ) -> str:
+        """
+        Combines Video Trimming and Visual Spatial Cropping in a single pass:
+        - If crop_box is provided (x, y, width, height) with width > 0 and height > 0:
+            ffmpeg -y -ss [start_time] -to [end_time] -i [input] -vf "crop=[width]:[height]:[x]:[y]" -c:v libx264 -crf 23 -c:a aac [output]
+        - If crop_box is None (visual crop toggle-off):
+            ffmpeg -y -ss [start_time] -to [end_time] -i [input] -c copy [output]
+        Uses get_unique_filename so files like video_cropped_1.mp4 are saved uniquely without overwriting.
+        """
+        if not os.path.exists(input_path):
+            raise FileNotFoundError(f"Input video file not found: {input_path}")
+
+        if not output_path:
+            dir_name = os.path.dirname(input_path)
+            base_name, ext = os.path.splitext(os.path.basename(input_path))
+            target_initial = os.path.join(dir_name, f"{base_name}_cropped{ext}")
+            if os.path.abspath(target_initial) == os.path.abspath(input_path):
+                target_initial = os.path.join(dir_name, f"{base_name}_cropped_1{ext}")
+            output_path = get_unique_filename(target_initial)
+
+        start_str = str(start_time).strip() or "00:00:00"
+        end_str = str(end_time).strip()
+        if not end_str:
+            dur = get_video_duration(input_path)
+            end_str = format_seconds_to_hhmmss(dur) if dur > 0 else "00:00:10"
+
+        has_crop = False
+        crop_filter = ""
+        if crop_box and len(crop_box) == 4:
+            x, y, w, h = crop_box
+            w = int(w)
+            h = int(h)
+            x = max(0, int(x))
+            y = max(0, int(y))
+            # H.264 requires dimensions to be divisible by 2
+            w = w - (w % 2)
+            h = h - (h % 2)
+            if w > 0 and h > 0:
+                has_crop = True
+                crop_filter = f"crop={w}:{h}:{x}:{y}"
+
+        if has_crop:
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                start_str,
+                "-to",
+                end_str,
+                "-i",
+                input_path,
+                "-vf",
+                crop_filter,
+                "-c:v",
+                "libx264",
+                "-crf",
+                "23",
+                "-c:a",
+                "aac",
+                output_path,
+            ]
+        else:
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-ss",
+                start_str,
+                "-to",
+                end_str,
+                "-i",
+                input_path,
+                "-c",
+                "copy",
+                output_path,
+            ]
+
+        print(f"[QuickDrop DEBUG] FFMPEG VIDEO STUDIO COMMAND: {' '.join(cmd)}")
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.returncode != 0:
+            print(f"[QuickDrop DEBUG] FFMPEG ERROR:\n{result.stderr}")
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            err_line = result.stderr.strip().splitlines()[-1] if result.stderr.strip() else "Unknown error"
+            raise RuntimeError(f"FFmpeg processing failed: {err_line}")
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            if os.path.exists(output_path):
+                try:
+                    os.remove(output_path)
+                except OSError:
+                    pass
+            raise RuntimeError("Processing failed: Output video was not generated or is empty.")
+
+        print(f"[QuickDrop] Processed video '{input_path}' -> '{output_path}'")
+        return output_path
+
+    @classmethod
+    def _do_trim_video(cls, input_path: str, start_time: str, end_time: str, output_path: str = "") -> str:
+        """Stream copy trim video forwarding to _do_process_video."""
+        return cls._do_process_video(input_path, start_time, end_time, output_path, crop_box=None)
 
     def __init__(self, file_path: str, parent=None) -> None:
         super().__init__(parent)
         self.file_path = file_path
         self._drag_start_pos = None
         self._updating_inputs = False
+        self.crop_type = self.detect_crop_type(file_path)
 
         self.setWindowFlags(
             Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
-        self.setFixedSize(450, 480)
 
-        self._setup_ui()
+        if self.crop_type == "video":
+            self.setFixedSize(390, 290)
+            self._setup_video_ui()
+        else:
+            self.setFixedSize(450, 480)
+            self._setup_ui()
+
         self._center_on_screen()
+
+    def _setup_video_ui(self) -> None:
+        outer_layout = QVBoxLayout(self)
+        outer_layout.setContentsMargins(10, 10, 10, 10)
+
+        self.container = QFrame()
+        self.container.setObjectName("cropVideoContainer")
+        self.container.setStyleSheet("""
+            #cropVideoContainer {
+                background-color: #f7f7f7;
+                border: 1px solid rgba(0, 0, 0, 0.12);
+                border-radius: 16px;
+            }
+            QLabel {
+                color: #222222;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            }
+        """)
+
+        shadow = QGraphicsDropShadowEffect(self.container)
+        shadow.setBlurRadius(20)
+        shadow.setColor(QColor(0, 0, 0, 45))
+        shadow.setOffset(0, 4)
+        self.container.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(self.container)
+        layout.setContentsMargins(20, 16, 20, 16)
+        layout.setSpacing(10)
+
+        # 1. Header: "Trim Video" + Close Button
+        header_layout = QHBoxLayout()
+        header_layout.addSpacing(22)
+        title_label = QLabel("Trim Video")
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setStyleSheet("font-size: 16px; font-weight: bold; color: #222222;")
+        header_layout.addWidget(title_label)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(22, 22)
+        close_btn.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                color: rgba(0, 0, 0, 0.35);
+                font-size: 12px;
+                font-weight: bold;
+                border: none;
+                border-radius: 11px;
+            }
+            QPushButton:hover {
+                background: rgba(0, 0, 0, 0.08);
+                color: #222222;
+            }
+        """)
+        close_btn.clicked.connect(self.reject)
+        header_layout.addWidget(close_btn)
+        layout.addLayout(header_layout)
+
+        # 2. File Information
+        dur = get_video_duration(self.file_path)
+        self._video_duration = dur
+        dur_str = format_seconds_to_hhmmss(dur) if dur > 0 else "00:00:10"
+
+        file_label = QLabel(os.path.basename(self.file_path))
+        file_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #222222;")
+        layout.addWidget(file_label)
+
+        duration_label = QLabel(f"Duration: {format_seconds_to_hhmmss(dur)}" if dur > 0 else "Duration: Unknown")
+        duration_label.setStyleSheet("font-size: 12px; font-weight: 500; color: #666666;")
+        layout.addWidget(duration_label)
+
+        # 3. Start & End Time Inputs
+        times_layout = QHBoxLayout()
+        times_layout.setSpacing(12)
+
+        start_vbox = QVBoxLayout()
+        start_vbox.setSpacing(4)
+        start_lbl = QLabel("Start Time (HH:MM:SS)")
+        start_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #444444;")
+        self.start_input = QLineEdit("00:00:00")
+        self.start_input.setPlaceholderText("00:00:00")
+        self.start_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #ffffff;
+                color: #222222;
+                border: 1px solid rgba(0, 0, 0, 0.16);
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLineEdit:focus {
+                border: 1px solid #ff5500;
+            }
+        """)
+        start_vbox.addWidget(start_lbl)
+        start_vbox.addWidget(self.start_input)
+        times_layout.addLayout(start_vbox)
+
+        end_vbox = QVBoxLayout()
+        end_vbox.setSpacing(4)
+        end_lbl = QLabel("End Time (HH:MM:SS)")
+        end_lbl.setStyleSheet("font-size: 11px; font-weight: 600; color: #444444;")
+        self.end_input = QLineEdit(dur_str)
+        self.end_input.setPlaceholderText("00:00:10")
+        self.end_input.setStyleSheet("""
+            QLineEdit {
+                background-color: #ffffff;
+                color: #222222;
+                border: 1px solid rgba(0, 0, 0, 0.16);
+                border-radius: 6px;
+                padding: 6px 10px;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            QLineEdit:focus {
+                border: 1px solid #ff5500;
+            }
+        """)
+        end_vbox.addWidget(end_lbl)
+        end_vbox.addWidget(self.end_input)
+        times_layout.addLayout(end_vbox)
+
+        layout.addLayout(times_layout)
+
+        # 4. Error Message (Hidden by default)
+        self.video_error_label = QLabel("")
+        self.video_error_label.setStyleSheet("""
+            QLabel {
+                color: #d32f2f;
+                font-size: 11.5px;
+                font-weight: 600;
+                background: rgba(255, 59, 48, 0.08);
+                border: 1px solid rgba(255, 59, 48, 0.25);
+                border-radius: 6px;
+                padding: 5px 8px;
+            }
+        """)
+        self.video_error_label.setWordWrap(True)
+        self.video_error_label.hide()
+        layout.addWidget(self.video_error_label)
+
+        layout.addStretch()
+
+        # 5. Buttons: Cancel and Trim
+        bottom_layout = QHBoxLayout()
+        bottom_layout.setSpacing(10)
+        bottom_layout.addStretch()
+
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.setStyleSheet("""
+            QPushButton {
+                background-color: rgba(0, 0, 0, 0.06);
+                color: #444444;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 14px;
+                font-weight: 500;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: rgba(0, 0, 0, 0.1);
+                color: #222222;
+            }
+        """)
+        cancel_btn.clicked.connect(self.reject)
+        bottom_layout.addWidget(cancel_btn)
+
+        self.trim_btn = QPushButton("Trim")
+        self.trim_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #ff5500;
+                color: white;
+                border: none;
+                border-radius: 6px;
+                padding: 6px 18px;
+                font-weight: bold;
+                font-size: 13px;
+            }
+            QPushButton:hover {
+                background-color: #ff661a;
+            }
+            QPushButton:pressed {
+                background-color: #e04b00;
+            }
+            QPushButton:disabled {
+                background-color: rgba(0, 0, 0, 0.15);
+                color: rgba(0, 0, 0, 0.35);
+            }
+        """)
+        self.trim_btn.clicked.connect(self._on_trim_clicked)
+        bottom_layout.addWidget(self.trim_btn)
+        layout.addLayout(bottom_layout)
+
+        outer_layout.addWidget(self.container)
+
+        # 6. Loading Overlay
+        self.loading_overlay = QFrame(self.container)
+        self.loading_overlay.setStyleSheet("""
+            background-color: rgba(255, 255, 255, 0.92);
+            border-radius: 16px;
+        """)
+        overlay_layout = QVBoxLayout(self.loading_overlay)
+        overlay_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_layout.setSpacing(8)
+
+        overlay_title = QLabel("Processing...")
+        overlay_title.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_title.setStyleSheet("font-size: 14px; font-weight: bold; color: #ff5500;")
+        overlay_layout.addWidget(overlay_title)
+
+        overlay_sub = QLabel("Trimming video duration...")
+        overlay_sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        overlay_sub.setStyleSheet("font-size: 12px; color: #666666;")
+        overlay_layout.addWidget(overlay_sub)
+
+        self.loading_overlay.hide()
+
+    def resizeEvent(self, event) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        if hasattr(self, "loading_overlay") and hasattr(self, "container"):
+            self.loading_overlay.setGeometry(0, 0, self.container.width(), self.container.height())
+
+    def _show_video_error(self, message: str) -> None:
+        self.video_error_label.setText(message)
+        self.video_error_label.show()
+
+    def _show_video_loading(self, show: bool) -> None:
+        if show:
+            if hasattr(self, "loading_overlay") and hasattr(self, "container"):
+                self.loading_overlay.setGeometry(0, 0, self.container.width(), self.container.height())
+                self.loading_overlay.show()
+                self.loading_overlay.raise_()
+            self.trim_btn.setEnabled(False)
+        else:
+            if hasattr(self, "loading_overlay"):
+                self.loading_overlay.hide()
+            self.trim_btn.setEnabled(True)
+
+    def _on_trim_clicked(self) -> None:
+        start_time = self.start_input.text().strip() or "00:00:00"
+        end_time = self.end_input.text().strip()
+        if not end_time:
+            self._show_video_error("Please specify an End Time (HH:MM:SS).")
+            return
+
+        self._show_video_loading(True)
+        self.video_error_label.hide()
+
+        def run_worker():
+            try:
+                out = self._do_trim_video(self.file_path, start_time, end_time)
+                QtCore.QMetaObject.invokeMethod(
+                    self,
+                    "_on_trim_finished_success",
+                    Qt.ConnectionType.QueuedConnection,
+                    QtCore.Q_ARG(str, out)
+                )
+            except Exception as exc:
+                err_text = str(exc)
+                QtCore.QMetaObject.invokeMethod(
+                    self,
+                    "_on_trim_finished_error",
+                    Qt.ConnectionType.QueuedConnection,
+                    QtCore.Q_ARG(str, err_text)
+                )
+
+        threading.Thread(target=run_worker, daemon=True).start()
+
+    @QtCore.pyqtSlot(str)
+    def _on_trim_finished_success(self, output_path: str) -> None:
+        print(f"[QuickDrop] Trim complete: {output_path}")
+        parent = self.parent()
+        if parent and hasattr(parent, "page"):
+            parent.page().runJavaScript(
+                'if (window.showToast) window.showToast("Video trimmed successfully!", "success");'
+            )
+        self.accept()
+
+    @QtCore.pyqtSlot(str)
+    def _on_trim_finished_error(self, err_msg: str) -> None:
+        self._show_video_loading(False)
+        self._show_video_error(err_msg or "Video trimming failed.")
 
     def _setup_ui(self) -> None:
         outer_layout = QVBoxLayout(self)
@@ -2089,10 +2548,12 @@ class CropDialog(QDialog):
         try:
             dir_name = os.path.dirname(self.file_path)
             base_name, ext = os.path.splitext(os.path.basename(self.file_path))
-            output_path = os.path.join(dir_name, f"{base_name}_cropped{ext}")
+            target_initial = os.path.join(dir_name, f"{base_name}_cropped{ext}")
 
-            if os.path.abspath(output_path) == os.path.abspath(self.file_path):
-                output_path = os.path.join(dir_name, f"{base_name}_cropped_1{ext}")
+            if os.path.abspath(target_initial) == os.path.abspath(self.file_path):
+                target_initial = os.path.join(dir_name, f"{base_name}_cropped_1{ext}")
+
+            output_path = get_unique_filename(target_initial)
 
             crop_box = self.preview_widget.get_crop_box()
             with Image.open(self.file_path) as img:
@@ -2118,6 +2579,11 @@ class CropDialog(QDialog):
                     cropped.save(output_path, format=fmt)
 
             print(f"[QuickDrop] Cropped '{self.file_path}' -> '{output_path}'")
+            parent = self.parent()
+            if parent and hasattr(parent, "page"):
+                parent.page().runJavaScript(
+                    'if (window.showToast) window.showToast("Image cropped successfully!", "success");'
+                )
             self.accept()
         except Exception as e:
             print(f"[QuickDrop ERROR] Failed to crop '{self.file_path}': {e}")
@@ -2148,7 +2614,9 @@ class CropDialog(QDialog):
         super().mouseReleaseEvent(event)
 
     def keyPressEvent(self, event) -> None:  # noqa: N802
-        if event.key() in (Qt.Key.Key_Escape, Qt.Key.Key_Q):
+        if event.key() == Qt.Key.Key_Escape:
+            self.reject()
+        elif event.key() == Qt.Key.Key_Q and getattr(self, "crop_type", "image") != "video":
             self.reject()
         else:
             super().keyPressEvent(event)
@@ -8356,6 +8824,141 @@ class QuickDropBridge(QObject):
         threading.Thread(target=run_worker, daemon=True).start()
         return json.dumps({"status": "processing"})
 
+    @QtCore.pyqtSlot(str, str, str, int, int, int, int, bool, result=str)
+    def trim_crop_video(
+        self,
+        file_path: str,
+        start_time: str = "00:00:00",
+        end_time: str = "",
+        x: int = 0,
+        y: int = 0,
+        width: int = 0,
+        height: int = 0,
+        crop_enabled: bool = False
+    ) -> str:
+        """Processes video trim and spatial crop together via bridge."""
+        crop_box = (x, y, width, height) if crop_enabled and width > 0 and height > 0 else None
+        return self._execute_video_pipeline(file_path, start_time, end_time, crop_box)
+
+    @QtCore.pyqtSlot(str, str, str, str, result=str)
+    @QtCore.pyqtSlot(str, str, str, result=str)
+    @QtCore.pyqtSlot(str, result=str)
+    def trim_video(self, file_path: str, start_time: str = "00:00:00", end_time: str = "", crop_data: str = "") -> str:
+        """Exposes video trimming and optional crop to web interface with validation and async handling."""
+        crop_box = None
+        if crop_data:
+            try:
+                cd = json.loads(crop_data) if isinstance(crop_data, str) else crop_data
+                if isinstance(cd, dict):
+                    if cd.get("crop_enabled", cd.get("enabled", True)):
+                        c_dict = cd.get("crop", cd)
+                        w = int(c_dict.get("width", 0))
+                        h = int(c_dict.get("height", 0))
+                        x = int(c_dict.get("x", 0))
+                        y = int(c_dict.get("y", 0))
+                        if w > 0 and h > 0:
+                            crop_box = (x, y, w, h)
+            except Exception as e:
+                print(f"[QuickDrop] Error parsing crop_data: {e}")
+        return self._execute_video_pipeline(file_path, start_time, end_time, crop_box)
+
+    def _execute_video_pipeline(
+        self,
+        file_path: str,
+        start_time: str,
+        end_time: str,
+        crop_box: tuple[int, int, int, int] | None = None
+    ) -> str:
+        print(f"[QuickDrop] Video studio request: {file_path} | Trim: {start_time}->{end_time} | Crop: {crop_box}")
+        crop_type = CropDialog.detect_crop_type(file_path)
+        if crop_type != "video":
+            resp = {
+                "status": "error",
+                "message": "Unsupported file. Only images and videos can be cropped or trimmed."
+            }
+            resp_json = json.dumps(resp, ensure_ascii=False)
+            self.window.page().runJavaScript(
+                f"if (window.handleCropResponse) window.handleCropResponse({resp_json}); else if (window.showToast) window.showToast({resp_json}.message, 'error');"
+            )
+            return resp_json
+
+        if not end_time:
+            dur = get_video_duration(file_path)
+            end_time = format_seconds_to_hhmmss(dur) if dur > 0 else "00:00:10"
+
+        dir_name = os.path.dirname(file_path)
+        base_name, ext = os.path.splitext(os.path.basename(file_path))
+        target_initial = os.path.join(dir_name, f"{base_name}_cropped{ext}")
+        if os.path.abspath(target_initial) == os.path.abspath(file_path):
+            target_initial = os.path.join(dir_name, f"{base_name}_cropped_1{ext}")
+        output_path = get_unique_filename(target_initial)
+
+        def run_worker():
+            try:
+                out = CropDialog._do_process_video(file_path, start_time, end_time, output_path, crop_box)
+                resp = {
+                    "status": "success",
+                    "output_path": out,
+                    "message": "Video processed successfully."
+                }
+            except Exception as e:
+                resp = {
+                    "status": "error",
+                    "message": str(e) or "Video processing failed. Please check your time inputs."
+                }
+            resp_json = json.dumps(resp, ensure_ascii=False)
+            self.window.page().runJavaScript(
+                f"if (window.handleCropResponse) window.handleCropResponse({resp_json}); else if (window.showToast) window.showToast({resp_json}.message, 'error');"
+            )
+
+        threading.Thread(target=run_worker, daemon=True).start()
+        return json.dumps({"status": "processing"})
+
+    @QtCore.pyqtSlot(str)
+    def open_crop_dialog(self, file_path: str) -> None:
+        """Opens CropDialog for given file from WebChannel."""
+        crop_type = CropDialog.detect_crop_type(file_path)
+        if crop_type == "unsupported":
+            resp = {
+                "status": "error",
+                "message": "Unsupported file. Only images and videos can be cropped or trimmed."
+            }
+            resp_json = json.dumps(resp, ensure_ascii=False)
+            self.window.page().runJavaScript(
+                f"if (window.handleCropResponse) window.handleCropResponse({resp_json}); else if (window.showToast) window.showToast({resp_json}.message, 'error');"
+            )
+            return
+
+        dialog = CropDialog(file_path, self.window)
+        dialog.show()
+        self.window._dialogs.append(dialog)
+        dialog.finished.connect(
+            lambda _, d=dialog: self.window._dialogs.remove(d)
+            if d in self.window._dialogs
+            else None
+        )
+
+    @QtCore.pyqtSlot(str, result=str)
+    def validate_crop_file(self, file_path: str) -> str:
+        """Validates if file can be cropped/trimmed and returns metadata JSON."""
+        crop_type = CropDialog.detect_crop_type(file_path)
+        if crop_type == "unsupported":
+            return json.dumps({
+                "status": "error",
+                "message": "Unsupported file. Only images and videos can be cropped or trimmed."
+            })
+        duration = 0.0
+        dur_str = ""
+        if crop_type == "video":
+            duration = get_video_duration(file_path)
+            dur_str = format_seconds_to_hhmmss(duration) if duration > 0 else "00:00:10"
+        return json.dumps({
+            "status": "success",
+            "category": crop_type,
+            "duration": duration,
+            "duration_str": dur_str
+        })
+
     @QtCore.pyqtSlot(list, str)
     def drop_files_action(self, file_paths: list, action_name: str) -> None:
         """Handle dropped files with a specific target action from WebChannel."""
@@ -8417,6 +9020,17 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
         # 1. True Transparency (CRITICAL)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.page().setBackgroundColor(Qt.GlobalColor.transparent)
+
+        # Configure WebEngine for HTML5 video playback with local file access
+        self.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True
+        )
+        self.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls, True
+        )
+        self.settings().setAttribute(
+            QWebEngineSettings.WebAttribute.PlaybackRequiresUserGesture, False
+        )
 
         # Enable Drops, Keyboard Focus & Mouse Tracking for real-time hover
         self.setAcceptDrops(True)
@@ -8587,14 +9201,34 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 )
         elif act_upper == "CROP":
             for path in file_paths:
-                dialog = CropDialog(path, self)
-                dialog.show()
-                self._dialogs.append(dialog)
-                dialog.finished.connect(
-                    lambda _, d=dialog: self._dialogs.remove(d)
-                    if d in self._dialogs
-                    else None
-                )
+                crop_type = CropDialog.detect_crop_type(path)
+                if crop_type == "unsupported":
+                    err_payload = {
+                        "status": "error",
+                        "message": "Unsupported file. Only images and videos can be cropped or trimmed."
+                    }
+                    print(f"[QuickDrop] Unsupported file for crop: {path}")
+                    err_json = json.dumps(err_payload, ensure_ascii=False)
+                    self.page().runJavaScript(
+                        f"if (window.handleCropResponse) window.handleCropResponse({err_json}); else if (window.showToast) window.showToast({err_json}.message, 'error');"
+                    )
+                    continue
+                if crop_type == "video":
+                    path_json = json.dumps(path)
+                    dur = get_video_duration(path)
+                    dur_str = json.dumps(format_seconds_to_hhmmss(dur) if dur > 0 else "00:00:10")
+                    self.page().runJavaScript(
+                        f"if (window.openCropModal) window.openCropModal({path_json}, {dur_str});"
+                    )
+                else:
+                    dialog = CropDialog(path, self)
+                    dialog.show()
+                    self._dialogs.append(dialog)
+                    dialog.finished.connect(
+                        lambda _, d=dialog: self._dialogs.remove(d)
+                        if d in self._dialogs
+                        else None
+                    )
         elif act_upper == "METADATA":
             for path in file_paths:
                 dialog = MetadataDialog(path, self)
@@ -8769,7 +9403,14 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 "Standard Documents (*.txt *.csv *.rtf *.json *.xml *.log *.md);;"
                 "All Files (*.*);;All Files (*)"
             )
-        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "CROP", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT"):
+        elif act_upper == "CROP":
+            file_filter = (
+                "Images & Videos (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif *.mp4 *.mov *.avi *.mkv *.webm *.flv *.wmv *.m4v *.ts *.3gp);;"
+                "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;"
+                "Videos (*.mp4 *.mov *.avi *.mkv *.webm *.flv *.wmv *.m4v *.ts *.3gp);;"
+                "All Files (*.*);;All Files (*)"
+            )
+        elif act_upper in ("WATERMARK", "REDACT", "EDIT", "ANNOTATE", "METADATA", "COLOR", "OCR", "AI DETECT", "AI_DETECT"):
             file_filter = (
                 "Images (*.png *.jpg *.jpeg *.webp *.bmp *.tiff *.tif *.heic *.avif);;All Files (*.*);;All Files (*)"
             )
@@ -9126,6 +9767,32 @@ class TransparentWebDropZone(ZoomLockedWebEngineView):
                 except (ValueError, TypeError):
                     slider_val = 50
                 self._bridge.compress_file(file_path, slider_val)
+        elif title.startswith("quickdrop:trim:"):
+            parts = title.split(":")
+            if len(parts) >= 5:
+                file_path = parts[2]
+                start_time = parts[3]
+                end_time = parts[4]
+                crop_data = parts[5] if len(parts) >= 6 else ""
+                self._bridge.trim_video(file_path, start_time, end_time, crop_data)
+        elif title.startswith("quickdrop:video_studio:"):
+            parts = title.split(":")
+            if len(parts) >= 3:
+                try:
+                    import urllib.parse
+                    raw_json = urllib.parse.unquote(parts[2])
+                    data = json.loads(raw_json)
+                    fp = data.get("file_path", "")
+                    st = data.get("start_time", "00:00:00")
+                    et = data.get("end_time", "")
+                    ce = data.get("crop_enabled", False)
+                    cb = None
+                    if ce and data.get("crop"):
+                        c = data["crop"]
+                        cb = (c.get("x", 0), c.get("y", 0), c.get("width", 0), c.get("height", 0))
+                    self._bridge._execute_video_pipeline(fp, st, et, cb)
+                except Exception as e:
+                    print(f"[QuickDrop] Error parsing quickdrop:video_studio: {e}")
 
     def _handle_action_click(self, action_name: str, target_state: bool | None = None) -> None:
         """Execute click-triggered actions without requiring file drop."""

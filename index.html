@@ -569,6 +569,615 @@
       line-height: 1.35;
     }
 
+    /* ── Mobile-Like Visual Video Studio (Simultaneous Trim & Crop) ── */
+    .crop-modal {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 440px;
+      max-height: 480px;
+      background: rgba(247, 247, 247, 0.96);
+      backdrop-filter: blur(24px) saturate(180%);
+      -webkit-backdrop-filter: blur(24px) saturate(180%);
+      border: 1px solid rgba(0, 0, 0, 0.12);
+      border-radius: 16px;
+      padding: 14px 16px;
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.22);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      z-index: 1000;
+      color: #222222;
+      display: none;
+      box-sizing: border-box;
+      user-select: none;
+    }
+    .crop-modal.visible {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+    }
+    .crop-modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .crop-modal-title-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .crop-modal-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #1a1a1a;
+      letter-spacing: -0.2px;
+    }
+    .video-badge {
+      font-size: 10.5px;
+      font-weight: 600;
+      color: #555555;
+      background: rgba(0, 0, 0, 0.06);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .crop-header-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .crop-toggle-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      user-select: none;
+    }
+    .crop-toggle-input {
+      display: none;
+    }
+    .crop-toggle-switch {
+      position: relative;
+      width: 32px;
+      height: 18px;
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: 10px;
+      transition: background 0.2s ease;
+      display: inline-block;
+    }
+    .crop-toggle-switch::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      background: #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+      transition: transform 0.2s ease;
+    }
+    .crop-toggle-input:checked + .crop-toggle-switch {
+      background: #ff5500;
+    }
+    .crop-toggle-input:checked + .crop-toggle-switch::after {
+      transform: translateX(14px);
+    }
+    .crop-toggle-text {
+      font-size: 12px;
+      font-weight: 600;
+      color: #333333;
+    }
+    .crop-modal-close {
+      background: transparent;
+      border: none;
+      color: rgba(0, 0, 0, 0.35);
+      font-size: 14px;
+      font-weight: bold;
+      cursor: pointer;
+      border-radius: 50%;
+      width: 22px;
+      height: 22px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .crop-modal-close:hover {
+      background: rgba(0, 0, 0, 0.08);
+      color: #222222;
+    }
+
+    /* Video Studio Initialization Loader (Samsung Studio Experience) */
+    .video-studio-init-loader {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.92);
+      backdrop-filter: blur(12px) saturate(180%);
+      -webkit-backdrop-filter: blur(12px) saturate(180%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      z-index: 60;
+      border-radius: 16px;
+      transition: opacity 0.25s ease;
+    }
+    .video-studio-loader-text {
+      font-size: 13px;
+      font-weight: 700;
+      color: #222222;
+      letter-spacing: 0.2px;
+    }
+
+    /* Video Player Viewport & Visual Crop Box Overlay */
+    .video-studio-viewport {
+      position: relative;
+      width: 100%;
+      height: 185px;
+      background: #09090b;
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+    }
+    #cropVideoElement {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      display: block;
+      pointer-events: auto;
+      cursor: pointer;
+    }
+    .video-play-overlay-btn {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      background: rgba(0, 0, 0, 0.55);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border: 1.5px solid rgba(255, 255, 255, 0.4);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      z-index: 10;
+      opacity: 0.9;
+    }
+    .video-play-overlay-btn:hover {
+      background: rgba(255, 122, 0, 0.9);
+      transform: translate(-50%, -50%) scale(1.08);
+      opacity: 1;
+    }
+    .video-time-pill {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      color: #ffffff;
+      font-size: 10.5px;
+      font-weight: 600;
+      padding: 3px 7px;
+      border-radius: 5px;
+      z-index: 12;
+      pointer-events: none;
+      letter-spacing: 0.3px;
+    }
+
+    /* Spatial Crop Bounding Box & Samsung Handles */
+    .video-crop-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 15;
+      pointer-events: none;
+    }
+    .crop-bounding-box {
+      position: absolute;
+      border: 1.5px solid rgba(255, 255, 255, 0.95);
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.58);
+      box-sizing: border-box;
+      cursor: move;
+      pointer-events: auto;
+    }
+    .crop-box-dim-badge {
+      position: absolute;
+      top: -24px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #FF7A00;
+      color: #ffffff;
+      font-size: 10.5px;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+      letter-spacing: 0.3px;
+    }
+    /* Rule of Thirds Grid */
+    .crop-grid-line {
+      position: absolute;
+      pointer-events: none;
+      background: rgba(255, 255, 255, 0.35);
+    }
+    .grid-v-1 { left: 33.33%; top: 0; bottom: 0; width: 1px; }
+    .grid-v-2 { left: 66.66%; top: 0; bottom: 0; width: 1px; }
+    .grid-h-1 { top: 33.33%; left: 0; right: 0; height: 1px; }
+    .grid-h-2 { top: 66.66%; left: 0; right: 0; height: 1px; }
+
+    /* Samsung Gallery Style Resizing Handles */
+    .crop-handle {
+      position: absolute;
+      box-sizing: border-box;
+      pointer-events: auto;
+      z-index: 20;
+    }
+    /* 4 Corner L-Brackets */
+    .handle-nw {
+      top: -3px;
+      left: -3px;
+      width: 22px;
+      height: 22px;
+      border-top: 4px solid #ffffff;
+      border-left: 4px solid #ffffff;
+      border-top-left-radius: 4px;
+      background: transparent;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+      cursor: nwse-resize;
+    }
+    .handle-ne {
+      top: -3px;
+      right: -3px;
+      width: 22px;
+      height: 22px;
+      border-top: 4px solid #ffffff;
+      border-right: 4px solid #ffffff;
+      border-top-right-radius: 4px;
+      background: transparent;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+      cursor: nesw-resize;
+    }
+    .handle-sw {
+      bottom: -3px;
+      left: -3px;
+      width: 22px;
+      height: 22px;
+      border-bottom: 4px solid #ffffff;
+      border-left: 4px solid #ffffff;
+      border-bottom-left-radius: 4px;
+      background: transparent;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+      cursor: nesw-resize;
+    }
+    .handle-se {
+      bottom: -3px;
+      right: -3px;
+      width: 22px;
+      height: 22px;
+      border-bottom: 4px solid #ffffff;
+      border-right: 4px solid #ffffff;
+      border-bottom-right-radius: 4px;
+      background: transparent;
+      filter: drop-shadow(0 1px 3px rgba(0,0,0,0.7));
+      cursor: nwse-resize;
+    }
+    /* 4 Side Grab Bars */
+    .handle-n {
+      top: -3px;
+      left: calc(50% - 14px);
+      width: 28px;
+      height: 4px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      cursor: ns-resize;
+    }
+    .handle-s {
+      bottom: -3px;
+      left: calc(50% - 14px);
+      width: 28px;
+      height: 4px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      cursor: ns-resize;
+    }
+    .handle-w {
+      top: calc(50% - 14px);
+      left: -3px;
+      width: 4px;
+      height: 28px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      cursor: ew-resize;
+    }
+    .handle-e {
+      top: calc(50% - 14px);
+      right: -3px;
+      width: 4px;
+      height: 28px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.7);
+      cursor: ew-resize;
+    }
+
+    /* Samsung-Style Filmstrip Timeline Section */
+    .timeline-trimmer-section {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .timeline-header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11.5px;
+      font-weight: 600;
+      color: #444444;
+    }
+    .timeline-selected-badge {
+      font-size: 11px;
+      font-weight: 700;
+      color: #FF7A00;
+    }
+    .timeline-track-wrapper {
+      position: relative;
+      width: 100%;
+      height: 52px;
+      background: rgba(18, 18, 22, 0.88);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      cursor: pointer;
+      user-select: none;
+      touch-action: none;
+    }
+    .timeline-filmstrip {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: flex;
+      background: repeating-linear-gradient(90deg, #18181c 0px, #18181c 40px, #222228 40px, #222228 80px);
+      pointer-events: none;
+    }
+    .timeline-filmstrip-thumb {
+      flex: 1;
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+      background: #1e1e24;
+      border-right: 1px solid rgba(0, 0, 0, 0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .timeline-filmstrip-thumb:last-child {
+      border-right: none;
+    }
+    .timeline-filmstrip-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+      opacity: 0.95;
+    }
+    .timeline-dim {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.68);
+      backdrop-filter: blur(1.5px) grayscale(85%);
+      -webkit-backdrop-filter: blur(1.5px) grayscale(85%);
+      z-index: 5;
+      pointer-events: none;
+      transition: width 0.04s linear;
+    }
+    .timeline-dim-left { left: 0; width: 0%; }
+    .timeline-dim-right { right: 0; width: 0%; }
+    .timeline-selected-window {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      border-top: 3px solid #FF7A00;
+      border-bottom: 3px solid #FF7A00;
+      background: rgba(255, 122, 0, 0.08);
+      z-index: 6;
+      pointer-events: none;
+      box-sizing: border-box;
+    }
+    .timeline-playhead {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: #ffffff;
+      box-shadow: 0 0 5px rgba(255, 122, 0, 0.9);
+      z-index: 12;
+      pointer-events: none;
+      transform: translateX(-50%);
+    }
+    .timeline-playhead::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -3.5px;
+      width: 9px;
+      height: 9px;
+      background: #FF7A00;
+      border: 1.5px solid #ffffff;
+      border-radius: 50%;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+    }
+    .timeline-handle {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 18px;
+      background: #FF7A00;
+      z-index: 10;
+      cursor: ew-resize;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+      user-select: none;
+      touch-action: none;
+    }
+    .handle-start {
+      left: 0%;
+      border-radius: 9px 0 0 9px;
+      transform: translateX(0);
+    }
+    .handle-end {
+      left: 100%;
+      border-radius: 0 9px 9px 0;
+      transform: translateX(-18px);
+    }
+    .handle-grip-pill {
+      width: 4px;
+      height: 18px;
+      background: #ffffff;
+      border-radius: 2px;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+    }
+
+    /* Numeric Time Inputs Row */
+    .crop-time-row {
+      display: flex;
+      gap: 12px;
+    }
+    .crop-time-group {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+    .crop-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #444444;
+    }
+    .crop-time-input {
+      background-color: #ffffff;
+      color: #222222;
+      border: 1px solid rgba(0, 0, 0, 0.16);
+      border-radius: 6px;
+      padding: 5px 8px;
+      font-size: 12px;
+      font-weight: 600;
+      outline: none;
+      font-family: inherit;
+      width: 100%;
+      box-sizing: border-box;
+      transition: border-color 0.15s ease;
+    }
+    .crop-time-input:focus {
+      border-color: #FF7A00;
+    }
+    .crop-error-msg {
+      color: #d32f2f;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: rgba(255, 59, 48, 0.08);
+      border: 1px solid rgba(255, 59, 48, 0.25);
+      border-radius: 6px;
+      padding: 6px 8px;
+      text-align: center;
+      display: none;
+      line-height: 1.35;
+    }
+    .crop-btn-row {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .crop-btn-cancel {
+      background-color: rgba(0, 0, 0, 0.06);
+      color: #444444;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 14px;
+      font-weight: 500;
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+    .crop-btn-cancel:hover {
+      background-color: rgba(0, 0, 0, 0.1);
+      color: #222222;
+    }
+    .crop-btn-confirm {
+      background-color: #FF7A00;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 16px;
+      font-weight: bold;
+      font-size: 12.5px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    .crop-btn-confirm:hover {
+      background-color: #e66e00;
+    }
+    .crop-btn-confirm:disabled {
+      background-color: rgba(0, 0, 0, 0.15);
+      color: rgba(0, 0, 0, 0.35);
+      cursor: not-allowed;
+    }
+    .crop-loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(255, 255, 255, 0.88);
+      backdrop-filter: blur(14px) saturate(180%);
+      -webkit-backdrop-filter: blur(14px) saturate(180%);
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      z-index: 50;
+      animation: fadeInOverlay 0.2s ease-out;
+    }
+    .crop-loading-text {
+      font-size: 13.5px;
+      font-weight: 700;
+      color: #111111;
+      letter-spacing: 0.2px;
+      text-align: center;
+    }
+    .crop-loading-subtext {
+      font-size: 11.5px;
+      color: #666666;
+      text-align: center;
+    }
+
     /* Floating Toast Notification */
     .toast-notification {
       position: absolute;
@@ -922,6 +1531,131 @@
       </div>
     </div>
 
+    <!-- Video Studio Modal (Integrated Visual Trim & Spatial Crop) -->
+    <div id="cropModal" class="crop-modal video-studio-modal">
+      <!-- Video Studio Init Loading Spinner (Samsung Studio experience) -->
+      <div id="videoStudioInitLoader" class="video-studio-init-loader" style="display: none;">
+        <div class="crop-spinner"></div>
+        <div class="video-studio-loader-text">Loading Video Studio...</div>
+      </div>
+
+      <div class="crop-modal-header">
+        <div class="crop-modal-title-row">
+          <span class="crop-modal-title" id="cropModalTitle">Video Studio</span>
+          <span id="videoResBadge" class="video-badge">-- × --</span>
+        </div>
+        <div class="crop-header-controls">
+          <!-- Crop Area Toggle Switch -->
+          <label class="crop-toggle-label" title="Enable/disable visual spatial crop box">
+            <input type="checkbox" id="cropAreaToggle" class="crop-toggle-input" onchange="window.toggleCropArea(this.checked)" />
+            <span class="crop-toggle-switch"></span>
+            <span class="crop-toggle-text">Crop Area</span>
+          </label>
+          <button class="crop-modal-close" onclick="closeCropModal()" aria-label="Close">✕</button>
+        </div>
+      </div>
+
+      <!-- Video Player Viewport with Visual Spatial Crop Overlay -->
+      <div id="videoStudioViewport" class="video-studio-viewport">
+        <video id="cropVideoElement" playsinline preload="auto"></video>
+        
+        <!-- Center Play/Pause Floating Indicator -->
+        <button id="videoPlayOverlayBtn" class="video-play-overlay-btn" onclick="window.toggleVideoPlayback()" aria-label="Play or Pause">
+          <svg id="playIconSvg" viewBox="0 0 24 24" width="20" height="20">
+            <polygon points="6,4 20,12 6,20" fill="currentColor"/>
+          </svg>
+        </button>
+
+        <!-- Current Playback Time Pill -->
+        <div id="videoTimePill" class="video-time-pill">00:00:00 / 00:00:00</div>
+
+        <!-- Visual Crop Overlay (Resizable Bounding Box with Samsung Handles) -->
+        <div id="videoCropOverlay" class="video-crop-overlay" style="display: none;">
+          <div id="cropBoundingBox" class="crop-bounding-box">
+            <!-- Crop Dimension Readout Badge -->
+            <div id="cropBoxDimBadge" class="crop-box-dim-badge">0 × 0</div>
+            
+            <!-- Rule of Thirds Grid Lines -->
+            <div class="crop-grid-line grid-v-1"></div>
+            <div class="crop-grid-line grid-v-2"></div>
+            <div class="crop-grid-line grid-h-1"></div>
+            <div class="crop-grid-line grid-h-2"></div>
+
+            <!-- Samsung-Style Corner Brackets and Edge Bars -->
+            <div class="crop-handle handle-nw" data-handle="nw"></div>
+            <div class="crop-handle handle-ne" data-handle="ne"></div>
+            <div class="crop-handle handle-sw" data-handle="sw"></div>
+            <div class="crop-handle handle-se" data-handle="se"></div>
+            <div class="crop-handle handle-n" data-handle="n"></div>
+            <div class="crop-handle handle-s" data-handle="s"></div>
+            <div class="crop-handle handle-w" data-handle="w"></div>
+            <div class="crop-handle handle-e" data-handle="e"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Trimmer Track with Dual Draggable Range Handles -->
+      <div id="timelineSection" class="timeline-trimmer-section">
+        <div class="timeline-header-row">
+          <span>Timeline Trimmer</span>
+          <span id="timelineSelectedBadge" class="timeline-selected-badge">Selected: 00:00:00</span>
+        </div>
+
+        <div id="timelineTrackWrapper" class="timeline-track-wrapper">
+          <!-- Filmstrip Thumbnail Frame Container -->
+          <div id="timelineFilmstrip" class="timeline-filmstrip"></div>
+
+          <!-- Dimmed Inactive Regions Outside Selected Window -->
+          <div id="timelineDimLeft" class="timeline-dim timeline-dim-left"></div>
+          <div id="timelineDimRight" class="timeline-dim timeline-dim-right"></div>
+
+          <!-- Highlighted Active Range Window -->
+          <div id="timelineSelectedWindow" class="timeline-selected-window"></div>
+
+          <!-- Playhead Scrubber Needle -->
+          <div id="timelinePlayhead" class="timeline-playhead"></div>
+
+          <!-- Left Start Handle (Samsung Bracket Style with White Pill) -->
+          <div id="timelineHandleStart" class="timeline-handle handle-start" title="Drag to adjust Start Time">
+            <span class="handle-grip-pill"></span>
+          </div>
+
+          <!-- Right End Handle (Samsung Bracket Style with White Pill) -->
+          <div id="timelineHandleEnd" class="timeline-handle handle-end" title="Drag to adjust End Time">
+            <span class="handle-grip-pill"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Numeric Time Input Row -->
+      <div id="timeInputsRow" class="crop-time-row">
+        <div class="crop-time-group">
+          <label for="cropStartTimeInput" class="crop-label">Start Time</label>
+          <input type="text" id="cropStartTimeInput" class="crop-time-input" placeholder="00:00:00" value="00:00:00" onchange="window.onTimeInputEdited()" />
+        </div>
+        <div class="crop-time-group">
+          <label for="cropEndTimeInput" class="crop-label">End Time</label>
+          <input type="text" id="cropEndTimeInput" class="crop-time-input" placeholder="00:00:10" value="00:00:10" onchange="window.onTimeInputEdited()" />
+        </div>
+      </div>
+
+      <!-- Graceful Error Message Element -->
+      <div id="cropErrorMsg" class="crop-error-msg"></div>
+
+      <!-- Action Buttons -->
+      <div class="crop-btn-row">
+        <button class="crop-btn-cancel" onclick="closeCropModal()">Cancel</button>
+        <button class="crop-btn-confirm" id="cropConfirmBtn" onclick="executeCropAction()">Trim Video</button>
+      </div>
+
+      <!-- Glass-morphism Loading Overlay inside Crop Modal -->
+      <div id="cropLoadingOverlay" class="crop-loading-overlay" style="display: none;">
+        <div class="crop-spinner"></div>
+        <div class="crop-loading-text">Processing...</div>
+        <div class="crop-loading-subtext">Applying media edits with FFmpeg...</div>
+      </div>
+    </div>
+
     <!-- Floating Glassmorphism Toast Notification -->
     <div id="toastNotification" class="toast-notification" style="display: none;">
       <span id="toastIcon" class="toast-icon">⚠️</span>
@@ -1150,6 +1884,716 @@
         document.title = 'quickdrop:compress:' + (window.currentCompressFile || '') + ':' + sliderVal + ':' + Date.now();
       }
     };
+
+    // ── Crop & Video Trimming Media Studio Handlers ──
+    window.currentCropFile = null;
+    window.currentCropCategory = null;
+
+    window.getCropCategory = function(filePath) {
+      if (!filePath || typeof filePath !== 'string') return 'unsupported';
+      const cleanPath = filePath.split('?')[0].split('#')[0];
+      const ext = cleanPath.split('.').pop().toLowerCase();
+      const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', 'm4v', 'ts', '3gp'];
+      const imageExts = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'tiff', 'tif', 'heic', 'avif', 'gif', 'ico'];
+      if (videoExts.includes(ext)) return 'video';
+      if (imageExts.includes(ext)) return 'image';
+      return 'unsupported';
+    };
+
+    // ── Helper Time Formatter / Parser ──
+    function formatSecondsToHHMMSS(sec) {
+      if (isNaN(sec) || sec < 0) sec = 0;
+      const s = Math.round(sec);
+      const hrs = Math.floor(s / 3600);
+      const mins = Math.floor((s % 3600) / 60);
+      const secs = s % 60;
+      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    function parseHHMMSSToSeconds(str) {
+      if (!str) return 0;
+      const clean = str.trim();
+      const parts = clean.split(':').map(Number);
+      if (parts.length === 3 && !parts.some(isNaN)) {
+        return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      }
+      if (parts.length === 2 && !parts.some(isNaN)) {
+        return parts[0] * 60 + parts[1];
+      }
+      const val = parseFloat(clean);
+      return !isNaN(val) ? val : 0;
+    }
+
+    // ── Video Studio State ──
+    window.currentCropFile = null;
+    window.currentCropCategory = 'video';
+    window.videoDuration = 0;
+    window.trimStartTime = 0;
+    window.trimEndTime = 0;
+    window.isCropAreaActive = false;
+    window.cropBox = { x: 0, y: 0, width: 0, height: 0 };
+    window.cropBoxPct = { left: 10, top: 10, width: 80, height: 80 };
+
+    window.showCropLoading = function() {
+      const overlay = document.getElementById('cropLoadingOverlay');
+      if (overlay) overlay.style.display = 'flex';
+      const confirmBtn = document.getElementById('cropConfirmBtn');
+      if (confirmBtn) confirmBtn.disabled = true;
+    };
+
+    window.hideCropLoading = function() {
+      const overlay = document.getElementById('cropLoadingOverlay');
+      if (overlay) overlay.style.display = 'none';
+      const confirmBtn = document.getElementById('cropConfirmBtn');
+      if (confirmBtn) confirmBtn.disabled = false;
+    };
+
+    window.showCropError = function(message) {
+      window.hideCropLoading();
+      const errMsg = document.getElementById('cropErrorMsg');
+      if (errMsg) {
+        errMsg.textContent = message;
+        errMsg.style.display = 'block';
+      }
+      window.showToast(message, 'error');
+    };
+
+    window.toggleCropArea = function(checked) {
+      window.isCropAreaActive = Boolean(checked);
+      const overlay = document.getElementById('videoCropOverlay');
+      if (overlay) overlay.style.display = checked ? 'block' : 'none';
+      const confirmBtn = document.getElementById('cropConfirmBtn');
+      if (confirmBtn) {
+        confirmBtn.textContent = checked ? 'Crop & Trim' : 'Trim Video';
+      }
+      if (checked) {
+        window.updateOverlayRectToVideo();
+        window.updateCropBoundingBoxDom();
+      }
+    };
+
+    /**
+     * Dynamically positions and sizes #videoCropOverlay to match the exact rendered
+     * video rectangle within #videoStudioViewport, eliminating letterbox/pillarbox drift.
+     */
+    window.updateOverlayRectToVideo = function() {
+      const vp = document.getElementById('videoStudioViewport');
+      const video = document.getElementById('cropVideoElement');
+      const overlay = document.getElementById('videoCropOverlay');
+      if (!vp || !video || !overlay) return;
+
+      const natW = video.videoWidth;
+      const natH = video.videoHeight;
+      if (!natW || !natH) {
+        overlay.style.left = '0px';
+        overlay.style.top = '0px';
+        overlay.style.width = '100%';
+        overlay.style.height = '100%';
+        return;
+      }
+
+      const vpW = vp.clientWidth;
+      const vpH = vp.clientHeight;
+      const videoAspect = natW / natH;
+      const vpAspect = vpW / vpH;
+
+      let renderW, renderH, renderLeft, renderTop;
+      if (videoAspect > vpAspect) {
+        renderW = vpW;
+        renderH = vpW / videoAspect;
+        renderLeft = 0;
+        renderTop = (vpH - renderH) / 2;
+      } else {
+        renderH = vpH;
+        renderW = vpH * videoAspect;
+        renderTop = 0;
+        renderLeft = (vpW - renderW) / 2;
+      }
+
+      overlay.style.position = 'absolute';
+      overlay.style.left = `${Math.round(renderLeft)}px`;
+      overlay.style.top = `${Math.round(renderTop)}px`;
+      overlay.style.width = `${Math.round(renderW)}px`;
+      overlay.style.height = `${Math.round(renderH)}px`;
+    };
+
+    window.updateCropBoundingBoxDom = function() {
+      const boxEl = document.getElementById('cropBoundingBox');
+      const videoEl = document.getElementById('cropVideoElement');
+      const dimBadge = document.getElementById('cropBoxDimBadge');
+      if (!boxEl || !videoEl) return;
+
+      const p = window.cropBoxPct;
+      boxEl.style.left = p.left + '%';
+      boxEl.style.top = p.top + '%';
+      boxEl.style.width = p.width + '%';
+      boxEl.style.height = p.height + '%';
+
+      const natW = videoEl.videoWidth || 1920;
+      const natH = videoEl.videoHeight || 1080;
+
+      let x = Math.round((p.left / 100) * natW);
+      let y = Math.round((p.top / 100) * natH);
+      let w = Math.round((p.width / 100) * natW);
+      let h = Math.round((p.height / 100) * natH);
+
+      // Ensure even pixel dimensions for H.264
+      w = Math.max(2, w - (w % 2));
+      h = Math.max(2, h - (h % 2));
+      x = Math.max(0, Math.min(natW - w, x));
+      y = Math.max(0, Math.min(natH - h, y));
+
+      window.cropBox = { x, y, width: w, height: h };
+      if (dimBadge) {
+        dimBadge.textContent = `${w} × ${h}`;
+      }
+    };
+
+    window.updateTimelineUi = function() {
+      const startHandle = document.getElementById('timelineHandleStart');
+      const endHandle = document.getElementById('timelineHandleEnd');
+      const dimLeft = document.getElementById('timelineDimLeft');
+      const dimRight = document.getElementById('timelineDimRight');
+      const windowEl = document.getElementById('timelineSelectedWindow');
+      const startInput = document.getElementById('cropStartTimeInput');
+      const endInput = document.getElementById('cropEndTimeInput');
+      const badge = document.getElementById('timelineSelectedBadge');
+
+      const dur = window.videoDuration || 1;
+      const s = Math.max(0, Math.min(window.trimStartTime, dur));
+      const e = Math.max(s + 0.1, Math.min(window.trimEndTime, dur));
+
+      const startPct = (s / dur) * 100;
+      const endPct = (e / dur) * 100;
+
+      if (startHandle) startHandle.style.left = startPct + '%';
+      if (endHandle) endHandle.style.left = endPct + '%';
+      if (dimLeft) dimLeft.style.width = startPct + '%';
+      if (dimRight) dimRight.style.width = (100 - endPct) + '%';
+      if (windowEl) {
+        windowEl.style.left = startPct + '%';
+        windowEl.style.width = (endPct - startPct) + '%';
+      }
+      if (startInput && document.activeElement !== startInput) {
+        startInput.value = formatSecondsToHHMMSS(s);
+      }
+      if (endInput && document.activeElement !== endInput) {
+        endInput.value = formatSecondsToHHMMSS(e);
+      }
+      if (badge) {
+        badge.textContent = 'Selected: ' + formatSecondsToHHMMSS(e - s);
+      }
+    };
+
+    window.toggleVideoPlayback = function() {
+      const video = document.getElementById('cropVideoElement');
+      const playIconSvg = document.getElementById('playIconSvg');
+      if (!video) return;
+
+      if (video.paused) {
+        if (video.currentTime >= window.trimEndTime || video.currentTime < window.trimStartTime) {
+          video.currentTime = window.trimStartTime;
+        }
+        video.play().catch(() => {});
+        if (playIconSvg) {
+          playIconSvg.innerHTML = '<rect x="6" y="4" width="4" height="16" fill="currentColor"/><rect x="14" y="4" width="4" height="16" fill="currentColor"/>';
+        }
+      } else {
+        video.pause();
+        if (playIconSvg) {
+          playIconSvg.innerHTML = '<polygon points="6,4 20,12 6,20" fill="currentColor"/>';
+        }
+      }
+    };
+
+    window.onTimeInputEdited = function() {
+      const startInput = document.getElementById('cropStartTimeInput');
+      const endInput = document.getElementById('cropEndTimeInput');
+      if (!startInput || !endInput) return;
+
+      const dur = window.videoDuration || 10;
+      let s = parseHHMMSSToSeconds(startInput.value);
+      let e = parseHHMMSSToSeconds(endInput.value);
+
+      if (isNaN(s) || s < 0) s = 0;
+      if (isNaN(e) || e <= s) e = Math.min(dur, s + 5);
+      if (e > dur) e = dur;
+
+      window.trimStartTime = s;
+      window.trimEndTime = e;
+      window.updateTimelineUi();
+
+      const video = document.getElementById('cropVideoElement');
+      if (video) video.currentTime = s;
+    };
+
+    /**
+     * Extracts 5-6 real thumbnail frames from the video using an invisible canvas
+     * and sets them as the filmstrip background for the Samsung Gallery timeline.
+     */
+    window.generateFilmstripThumbnails = function(videoSrc, duration, count = 6) {
+      const filmstrip = document.getElementById('timelineFilmstrip');
+      if (!filmstrip) return;
+      filmstrip.innerHTML = '';
+
+      if (window._filmstripCleanup) {
+        window._filmstripCleanup();
+        window._filmstripCleanup = null;
+      }
+
+      const thumbEls = [];
+      for (let i = 0; i < count; i++) {
+        const div = document.createElement('div');
+        div.className = 'timeline-filmstrip-thumb';
+        filmstrip.appendChild(div);
+        thumbEls.push(div);
+      }
+
+      if (!videoSrc || !duration || duration <= 0) return;
+
+      const offscreen = document.createElement('video');
+      offscreen.muted = true;
+      offscreen.playsInline = true;
+      offscreen.preload = 'auto';
+      offscreen.src = videoSrc;
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 120;
+      canvas.height = 68;
+      const ctx = canvas.getContext('2d');
+
+      let cancelled = false;
+      let currentIndex = 0;
+      const times = [];
+      for (let i = 0; i < count; i++) {
+        times.push(Math.min(duration - 0.05, Math.max(0.05, ((i + 0.5) / count) * duration)));
+      }
+
+      const cleanup = function() {
+        cancelled = true;
+        offscreen.onloadeddata = null;
+        offscreen.onseeked = null;
+        offscreen.onerror = null;
+        offscreen.pause();
+        offscreen.removeAttribute('src');
+        try { offscreen.load(); } catch (_) {}
+      };
+      window._filmstripCleanup = cleanup;
+
+      const seekNext = function() {
+        if (cancelled || currentIndex >= count) return;
+        try {
+          offscreen.currentTime = times[currentIndex];
+        } catch (_) {
+          currentIndex++;
+          seekNext();
+        }
+      };
+
+      offscreen.onseeked = function() {
+        if (cancelled || currentIndex >= count) return;
+        try {
+          ctx.drawImage(offscreen, 0, 0, canvas.width, canvas.height);
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.75);
+          if (thumbEls[currentIndex]) {
+            const img = document.createElement('img');
+            img.className = 'timeline-filmstrip-img';
+            img.src = dataUrl;
+            thumbEls[currentIndex].innerHTML = '';
+            thumbEls[currentIndex].appendChild(img);
+          }
+        } catch (e) {
+          console.warn('Canvas filmstrip capture notice:', e);
+        }
+        currentIndex++;
+        if (currentIndex < count && !cancelled) {
+          seekNext();
+        }
+      };
+
+      if (offscreen.readyState >= 2) {
+        seekNext();
+      } else {
+        offscreen.onloadeddata = function() {
+          if (!cancelled) seekNext();
+        };
+      }
+
+      offscreen.onerror = function() {
+        console.warn('Offscreen filmstrip video failed to load');
+      };
+    };
+
+    window.openCropModal = function(filePath, durationStr) {
+      window.currentCropFile = filePath;
+      const category = window.getCropCategory(filePath);
+      window.currentCropCategory = category;
+
+      const modal = document.getElementById('cropModal');
+      const titleEl = document.getElementById('cropModalTitle');
+      const resBadge = document.getElementById('videoResBadge');
+      const confirmBtn = document.getElementById('cropConfirmBtn');
+      const errMsg = document.getElementById('cropErrorMsg');
+      const toggleEl = document.getElementById('cropAreaToggle');
+      const videoEl = document.getElementById('cropVideoElement');
+      const playIconSvg = document.getElementById('playIconSvg');
+      const timePill = document.getElementById('videoTimePill');
+      const initLoader = document.getElementById('videoStudioInitLoader');
+
+      if (errMsg) errMsg.style.display = 'none';
+      window.hideCropLoading();
+
+      if (category === 'unsupported') {
+        window.showCropError('Unsupported file. Only images and videos can be cropped or trimmed.');
+        if (confirmBtn) confirmBtn.disabled = true;
+        if (modal) modal.classList.add('visible');
+        return;
+      }
+
+      if (category === 'image') {
+        // Image: route to native interactive crop studio
+        window.closeCropModal();
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && typeof b.open_crop_dialog === 'function') {
+          b.open_crop_dialog(filePath);
+        }
+        return;
+      }
+
+      // Video Studio Setup
+      if (titleEl) titleEl.textContent = 'Video Studio';
+      if (toggleEl) toggleEl.checked = false;
+      window.isCropAreaActive = false;
+      const cropOverlay = document.getElementById('videoCropOverlay');
+      if (cropOverlay) cropOverlay.style.display = 'none';
+      if (confirmBtn) {
+        confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Trim Video';
+      }
+      if (playIconSvg) {
+        playIconSvg.innerHTML = '<polygon points="6,4 20,12 6,20" fill="currentColor"/>';
+      }
+
+      // Show init loader before video & metadata are ready
+      if (initLoader) {
+        initLoader.style.opacity = '1';
+        initLoader.style.display = 'flex';
+      }
+
+      // Fallback timer to hide init loader if metadata hangs
+      const initSafetyTimeout = setTimeout(() => {
+        if (initLoader && initLoader.style.display !== 'none') {
+          initLoader.style.opacity = '0';
+          setTimeout(() => { initLoader.style.display = 'none'; }, 250);
+        }
+      }, 2500);
+
+      // Load Video Source
+      if (videoEl && filePath) {
+        videoEl.pause();
+        const videoSrc = filePath.startsWith('file://') ? filePath : ('file://' + filePath);
+        videoEl.src = videoSrc;
+        videoEl.load();
+
+        const onVideoReady = function() {
+          clearTimeout(initSafetyTimeout);
+          window.videoDuration = videoEl.duration || (durationStr ? parseHHMMSSToSeconds(durationStr) : 10);
+          window.trimStartTime = 0;
+          window.trimEndTime = window.videoDuration;
+
+          if (resBadge) {
+            resBadge.textContent = `${videoEl.videoWidth || '--'} × ${videoEl.videoHeight || '--'}`;
+          }
+          if (timePill) {
+            timePill.textContent = `00:00:00 / ${formatSecondsToHHMMSS(window.videoDuration)}`;
+          }
+
+          window.cropBoxPct = { left: 10, top: 10, width: 80, height: 80 };
+          window.updateOverlayRectToVideo();
+          window.updateCropBoundingBoxDom();
+          window.updateTimelineUi();
+
+          // Generate Samsung-style filmstrip thumbnails
+          window.generateFilmstripThumbnails(videoSrc, window.videoDuration, 6);
+
+          // Smoothly fade out the initialization loader
+          if (initLoader) {
+            setTimeout(() => {
+              initLoader.style.opacity = '0';
+              setTimeout(() => {
+                initLoader.style.display = 'none';
+              }, 250);
+            }, 180);
+          }
+        };
+
+        videoEl.onloadeddata = onVideoReady;
+        videoEl.onloadedmetadata = function() {
+          if (!videoEl.videoWidth) return;
+          window.updateOverlayRectToVideo();
+        };
+
+        videoEl.ontimeupdate = function() {
+          const cur = videoEl.currentTime;
+          const dur = window.videoDuration || 1;
+
+          if (cur >= window.trimEndTime && !videoEl.paused) {
+            videoEl.currentTime = window.trimStartTime;
+          }
+
+          const playhead = document.getElementById('timelinePlayhead');
+          if (playhead) {
+            const pct = Math.max(0, Math.min(100, (cur / dur) * 100));
+            playhead.style.left = pct + '%';
+          }
+
+          if (timePill) {
+            timePill.textContent = `${formatSecondsToHHMMSS(cur)} / ${formatSecondsToHHMMSS(dur)}`;
+          }
+        };
+      }
+
+      if (modal) modal.classList.add('visible');
+    };
+
+    window.closeCropModal = function() {
+      const modal = document.getElementById('cropModal');
+      if (modal) modal.classList.remove('visible');
+      const videoEl = document.getElementById('cropVideoElement');
+      if (videoEl) {
+        videoEl.pause();
+        videoEl.src = '';
+      }
+      if (window._filmstripCleanup) {
+        window._filmstripCleanup();
+        window._filmstripCleanup = null;
+      }
+      const initLoader = document.getElementById('videoStudioInitLoader');
+      if (initLoader) {
+        initLoader.style.display = 'none';
+      }
+      window.hideCropLoading();
+    };
+
+    window.executeCropAction = function() {
+      if (!window.currentCropFile) return;
+      const category = window.currentCropCategory || window.getCropCategory(window.currentCropFile);
+
+      if (category === 'unsupported') {
+        window.showCropError('Unsupported file. Only images and videos can be cropped or trimmed.');
+        return;
+      }
+
+      const sTimeStr = formatSecondsToHHMMSS(window.trimStartTime);
+      const eTimeStr = formatSecondsToHHMMSS(window.trimEndTime);
+      const isCrop = Boolean(window.isCropAreaActive);
+      const c = isCrop ? window.cropBox : { x: 0, y: 0, width: 0, height: 0 };
+
+      window.showCropLoading();
+
+      const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+      if (b && typeof b.trim_crop_video === 'function') {
+        b.trim_crop_video(
+          window.currentCropFile,
+          sTimeStr,
+          eTimeStr,
+          c.x,
+          c.y,
+          c.width,
+          c.height,
+          isCrop
+        );
+      } else if (b && typeof b.trim_video === 'function') {
+        const payload = { crop_enabled: isCrop, crop: c };
+        b.trim_video(window.currentCropFile, sTimeStr, eTimeStr, JSON.stringify(payload));
+      } else {
+        const payload = {
+          file_path: window.currentCropFile,
+          start_time: sTimeStr,
+          end_time: eTimeStr,
+          crop_enabled: isCrop,
+          crop: c
+        };
+        document.title = 'quickdrop:video_studio:' + encodeURIComponent(JSON.stringify(payload)) + ':' + Date.now();
+      }
+    };
+
+    window.handleCropResponse = function(response) {
+      window.hideCropLoading();
+      if (!response) return;
+      if (typeof response === 'string') {
+        try { response = JSON.parse(response); } catch (_) {}
+      }
+      if (response.status === 'error') {
+        const msg = response.message || 'Unsupported file. Only images and videos can be cropped or trimmed.';
+        window.showCropError(msg);
+      } else if (response.status === 'success') {
+        window.showToast('Processed successfully!', 'success');
+        setTimeout(() => {
+          window.closeCropModal();
+        }, 800);
+      }
+    };
+
+    // ── Mouse Dragging Event Listeners for Crop Box & Timeline ──
+    (function initVideoStudioInteractions() {
+      let activeCropHandle = null;
+      let isDraggingCropBox = false;
+      let isDraggingStartHandle = false;
+      let isDraggingEndHandle = false;
+      let mouseStartX = 0;
+      let mouseStartY = 0;
+      let initialCropBox = { left: 10, top: 10, width: 80, height: 80 };
+
+      // Crop Bounding Box Interaction
+      document.addEventListener('mousedown', (e) => {
+        const handle = e.target.closest('.crop-handle');
+        const box = e.target.closest('#cropBoundingBox');
+
+        if (handle) {
+          activeCropHandle = handle.dataset.handle;
+          mouseStartX = e.clientX;
+          mouseStartY = e.clientY;
+          initialCropBox = { ...window.cropBoxPct };
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        if (box) {
+          isDraggingCropBox = true;
+          mouseStartX = e.clientX;
+          mouseStartY = e.clientY;
+          initialCropBox = { ...window.cropBoxPct };
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        // Timeline Handles Interaction
+        const startHandle = e.target.closest('#timelineHandleStart');
+        const endHandle = e.target.closest('#timelineHandleEnd');
+        const track = e.target.closest('#timelineTrackWrapper');
+
+        if (startHandle) {
+          isDraggingStartHandle = true;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        if (endHandle) {
+          isDraggingEndHandle = true;
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+
+        if (track) {
+          const rect = track.getBoundingClientRect();
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const seekTime = ratio * (window.videoDuration || 1);
+          const video = document.getElementById('cropVideoElement');
+          if (video) video.currentTime = seekTime;
+          e.preventDefault();
+        }
+      });
+
+      document.addEventListener('mousemove', (e) => {
+        const overlay = document.getElementById('videoCropOverlay');
+        const track = document.getElementById('timelineTrackWrapper');
+
+        // Dragging Crop Box
+        if (isDraggingCropBox && overlay) {
+          const rect = overlay.getBoundingClientRect();
+          const dx = ((e.clientX - mouseStartX) / rect.width) * 100;
+          const dy = ((e.clientY - mouseStartY) / rect.height) * 100;
+
+          const maxLeft = 100 - initialCropBox.width;
+          const maxTop = 100 - initialCropBox.height;
+
+          window.cropBoxPct.left = Math.max(0, Math.min(maxLeft, initialCropBox.left + dx));
+          window.cropBoxPct.top = Math.max(0, Math.min(maxTop, initialCropBox.top + dy));
+          window.updateCropBoundingBoxDom();
+          return;
+        }
+
+        // Resizing Crop Box via Handles
+        if (activeCropHandle && overlay) {
+          const rect = overlay.getBoundingClientRect();
+          const dx = ((e.clientX - mouseStartX) / rect.width) * 100;
+          const dy = ((e.clientY - mouseStartY) / rect.height) * 100;
+
+          let l = initialCropBox.left;
+          let t = initialCropBox.top;
+          let w = initialCropBox.width;
+          let h = initialCropBox.height;
+          const minSize = 10;
+
+          if (activeCropHandle.includes('e')) {
+            w = Math.max(minSize, Math.min(100 - l, initialCropBox.width + dx));
+          }
+          if (activeCropHandle.includes('s')) {
+            h = Math.max(minSize, Math.min(100 - t, initialCropBox.height + dy));
+          }
+          if (activeCropHandle.includes('w')) {
+            const newL = Math.max(0, Math.min(initialCropBox.left + initialCropBox.width - minSize, initialCropBox.left + dx));
+            w = initialCropBox.width - (newL - initialCropBox.left);
+            l = newL;
+          }
+          if (activeCropHandle.includes('n')) {
+            const newT = Math.max(0, Math.min(initialCropBox.top + initialCropBox.height - minSize, initialCropBox.top + dy));
+            h = initialCropBox.height - (newT - initialCropBox.top);
+            t = newT;
+          }
+
+          window.cropBoxPct = { left: l, top: t, width: w, height: h };
+          window.updateCropBoundingBoxDom();
+          return;
+        }
+
+        // Dragging Timeline Start Handle
+        if (isDraggingStartHandle && track) {
+          const rect = track.getBoundingClientRect();
+          const dur = window.videoDuration || 1;
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const newStart = Math.min(window.trimEndTime - 0.2, ratio * dur);
+          window.trimStartTime = Math.max(0, newStart);
+          window.updateTimelineUi();
+
+          const video = document.getElementById('cropVideoElement');
+          if (video) video.currentTime = window.trimStartTime;
+          return;
+        }
+
+        // Dragging Timeline End Handle
+        if (isDraggingEndHandle && track) {
+          const rect = track.getBoundingClientRect();
+          const dur = window.videoDuration || 1;
+          const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+          const newEnd = Math.max(window.trimStartTime + 0.2, ratio * dur);
+          window.trimEndTime = Math.min(dur, newEnd);
+          window.updateTimelineUi();
+
+          const video = document.getElementById('cropVideoElement');
+          if (video) video.currentTime = window.trimEndTime;
+          return;
+        }
+      });
+
+      document.addEventListener('mouseup', () => {
+        activeCropHandle = null;
+        isDraggingCropBox = false;
+        isDraggingStartHandle = false;
+        isDraggingEndHandle = false;
+      });
+
+      window.addEventListener('resize', () => {
+        if (window.updateOverlayRectToVideo) {
+          window.updateOverlayRectToVideo();
+        }
+      });
+    })();
 
     /**
      * Updates the UI visual state of the FLOAT button.
