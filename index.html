@@ -22,12 +22,8 @@
     :root {
       --tangerine: #FF7A00;
       --tangerine-hover: #FF8F1F;
-      --tangerine-glow: rgba(255, 122, 0, 0.45);
-      --glass-bg: rgba(255, 255, 255, 0.7);
-      --glass-border: rgba(255, 255, 255, 0.95);
-      --glass-shadow: 0 20px 50px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.05);
-      --text-dark: #111111;
-      --text-muted: #555555;
+      --tangerine-glow: rgba(255, 122, 0, 0.5);
+      --text-dark: #333333;
     }
 
     /* Base Reset & Transparent Window */
@@ -63,7 +59,117 @@
       cursor: grabbing;
     }
 
-    /* Main Radial Menu Container - Light Frosted Glass Theme */
+    /* ── Top Buttons: Light Frosted Glass ── */
+
+    /* Close Window Button (Top-Left) */
+    .close-app-btn {
+      position: absolute;
+      top: 20px;
+      left: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      backdrop-filter: blur(30px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(30px) saturate(180%) !important;
+      background: rgba(255, 255, 255, 0.65) !important;
+      border: 1px solid rgba(255, 255, 255, 0.8) !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+      color: #333333 !important;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform, background-color, box-shadow;
+    }
+
+    .close-app-btn:hover {
+      transform: scale(1.08);
+      background: rgba(255, 59, 48, 0.9) !important;
+      border-color: rgba(255, 255, 255, 0.8) !important;
+      color: #ffffff !important;
+      box-shadow: 0 6px 18px rgba(255, 59, 48, 0.4) !important;
+    }
+
+    .close-app-btn:active {
+      transform: scale(0.92) !important;
+      transition: transform 0.08s ease !important;
+    }
+
+    .close-app-btn svg {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      fill: none;
+    }
+
+    /* FLOAT Pin to Top Tool Button (Top-Right) */
+    .float-pin-btn {
+      position: absolute;
+      top: 20px;
+      right: 24px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 18px;
+      backdrop-filter: blur(30px) saturate(180%) !important;
+      -webkit-backdrop-filter: blur(30px) saturate(180%) !important;
+      background: rgba(255, 255, 255, 0.65) !important;
+      border: 1px solid rgba(255, 255, 255, 0.8) !important;
+      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 0.9);
+      color: #333333 !important;
+      font-family: inherit;
+      font-size: 11px;
+      font-weight: 750;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      z-index: 100;
+      transition: all 0.22s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform, box-shadow, background-color, color;
+    }
+
+    .float-pin-btn.active,
+    .float-active {
+      background: rgba(255, 255, 255, 0.8) !important;
+      border-color: rgba(255, 122, 0, 0.5) !important;
+      color: #FF7A00 !important;
+      box-shadow: 0 4px 14px rgba(255, 122, 0, 0.2), inset 0 1px 1px rgba(255, 255, 255, 0.9) !important;
+    }
+
+    .float-pin-btn.active svg,
+    .float-active svg {
+      fill: #FF7A00 !important;
+    }
+
+    .float-pin-btn:hover {
+      transform: scale(1.05) translateY(-1px);
+      background: #FF7A00 !important;
+      border-color: rgba(255, 255, 255, 0.8) !important;
+      color: #ffffff !important;
+      box-shadow: 0 6px 20px rgba(255, 122, 0, 0.45) !important;
+    }
+
+    .float-pin-btn:hover svg {
+      fill: #ffffff !important;
+    }
+
+    .float-pin-btn:active {
+      transform: scale(0.95) translateY(1px) !important;
+      transition: transform 0.08s ease !important;
+    }
+
+    .float-pin-btn svg {
+      width: 13px;
+      height: 13px;
+      fill: currentColor;
+      transition: fill 0.18s ease;
+    }
+
+    /* ── Light Frosted Glass Outer Container (380x380) ── */
     .main-container, .radial-menu {
       position: absolute;
       top: 50%;
@@ -72,41 +178,26 @@
       width: 380px;
       height: 380px;
       border-radius: 50%;
-      background: rgba(255, 255, 255, 0.7) !important;
-      backdrop-filter: blur(28px) saturate(200%) !important;
-      -webkit-backdrop-filter: blur(28px) saturate(200%) !important;
-      border: 1.5px solid rgba(255, 255, 255, 0.95) !important;
-      box-shadow: 0 20px 55px rgba(0, 0, 0, 0.12), 0 4px 16px rgba(0, 0, 0, 0.05), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
+      background: rgba(255, 255, 255, 0.1) !important;
+      backdrop-filter: blur(40px) saturate(150%) !important;
+      -webkit-backdrop-filter: blur(40px) saturate(150%) !important;
+      -webkit-mask: radial-gradient(circle, transparent 0px, transparent 86px, black 87px);
+      mask: radial-gradient(circle, transparent 0px, transparent 86px, black 87px);
+      border: 1px solid rgba(255, 255, 255, 0.3) !important;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1), 0 4px 16px rgba(0, 0, 0, 0.04) !important;
       display: flex;
       align-items: center;
       justify-content: center;
       cursor: grab;
       user-select: none;
       -webkit-user-select: none;
-      transition: box-shadow 0.25s ease, border-color 0.25s ease;
     }
 
     .radial-menu:active {
       cursor: grabbing;
     }
 
-    /* Frosted Donut Ring Backing */
-    .glass-donut-backdrop {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      width: 352px;
-      height: 352px;
-      border-radius: 50%;
-      -webkit-mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
-      mask: radial-gradient(circle, transparent 71px, black 72px, black 176px, transparent 177px);
-      background: rgba(255, 255, 255, 0.75) !important;
-      pointer-events: none;
-      z-index: 1;
-    }
-
-    /* SVG Flower Petals Container (380x380) */
+    /* SVG Radial Canvas */
     .radial-svg {
       position: absolute;
       top: 0;
@@ -119,15 +210,7 @@
       z-index: 10;
     }
 
-    /* Circular Donut Base Track */
-    .donut-track {
-      fill: none;
-      stroke: rgba(255, 255, 255, 0.8) !important;
-      stroke-width: 104px;
-      pointer-events: none;
-    }
-
-    /* Petal Group: Holds slice path, icon, and label text */
+    /* Petal Group */
     .petal-group {
       transform-origin: 190px 190px;
       transition: transform 0.22s cubic-bezier(0.34, 1.56, 0.64, 1),
@@ -136,22 +219,24 @@
       cursor: pointer;
     }
 
-    /* Seamless Wedge Shapes: 8 connected macOS-style segments */
+    /* Donut-Style Organic Rounded Cards (Curved Floating Buttons) */
     .petal-slice {
-      fill: rgba(255, 255, 255, 0.7) !important;
-      stroke: rgba(255, 255, 255, 0.95) !important;
-      stroke-width: 1.5px !important;
-      stroke-linejoin: round;
+      fill: rgba(255, 255, 255, 0.75) !important;
+      background: rgba(255, 255, 255, 0.75) !important;
+      stroke: transparent !important;
+      stroke-width: 14px !important;
+      stroke-linejoin: round !important;
       cursor: pointer;
-      transition: fill 0.15s ease, stroke 0.15s ease;
-      will-change: fill, stroke;
+      filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.04));
+      transition: fill 0.15s ease, filter 0.15s ease;
+      will-change: fill, filter;
     }
 
-    /* Radial Petals / Action Buttons Hover Physics - Vibrant Tangerine Highlight */
+    /* Hover State: Vibrant Tangerine Orange (#FF7A00) with White Text */
     .petal-group:hover,
     .petal-group.active {
-      transform: scale(1.048);
-      filter: drop-shadow(0 8px 24px rgba(255, 122, 0, 0.6));
+      transform: scale(1.05);
+      filter: drop-shadow(0 8px 24px rgba(255, 122, 0, 0.55));
     }
 
     .petal-group:active {
@@ -162,321 +247,154 @@
     .petal-group:hover .petal-slice,
     .petal-group.active .petal-slice {
       fill: #FF7A00 !important;
-      stroke: #ffffff !important;
-      stroke-width: 2px !important;
+      stroke: transparent !important;
+      stroke-width: 14px !important;
     }
 
-    /* Segment Label Inside Wedge Petals - Dark Gray/Black for High Contrast */
+    /* ── Petal Content Layout (Flexbox: Icon on top, Text on bottom) ── */
+    .petal-foreign {
+      overflow: visible;
+      pointer-events: none;
+    }
+
+    .petal-content {
+      width: 100%;
+      height: 100%;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: center !important;
+      gap: 4px !important;
+      pointer-events: none;
+      user-select: none;
+    }
+
+    /* High-Contrast Dark Charcoal Labels (#333333) */
     .segment-label {
       font-size: 11px !important;
       font-weight: 750 !important;
       letter-spacing: 0.35px !important;
-      fill: #111111 !important;
-      text-anchor: middle;
-      dominant-baseline: central;
+      color: #333333 !important;
+      text-align: center;
+      line-height: 1;
       pointer-events: none;
-      transition: fill 0.15s ease;
-      will-change: fill;
-      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.9));
+      transition: color 0.15s ease;
+      will-change: color;
     }
 
     .segment-label.small-text {
       font-size: 9.5px !important;
-      font-weight: 750 !important;
       letter-spacing: 0.2px !important;
     }
 
     .petal-group:hover .segment-label,
     .petal-group.active .segment-label {
-      fill: #ffffff !important;
+      color: #ffffff !important;
       font-weight: 800 !important;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)) !important;
     }
 
-    /* Segment Minimalist Icons Inside Wedge Petals - Dark Gray/Black Contrast */
+    /* High-Contrast Dark Charcoal Icons (#333333) */
     .petal-icon {
+      width: 20px;
+      height: 20px;
       pointer-events: none;
-      color: #111111 !important;
-      stroke: #111111 !important;
+      color: #333333 !important;
+      stroke: #333333 !important;
       fill: none !important;
       stroke-linecap: round;
       stroke-linejoin: round;
-      opacity: 0.95 !important;
-      transition: color 0.15s ease, opacity 0.15s ease;
-      will-change: color, opacity;
-      filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.9));
+      opacity: 1 !important;
+      transition: color 0.15s ease, stroke 0.15s ease;
+      will-change: color, stroke;
     }
 
     .petal-group:hover .petal-icon,
     .petal-group.active .petal-icon {
       color: #ffffff !important;
       stroke: #ffffff !important;
-      opacity: 1 !important;
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.4)) !important;
     }
 
-    /* Modern Drop-Target Center Circle (Light Frosted Glass Hub) */
-    .center-circle {
+    /* ── Center Cavity: Completely Invisible with Floating Translucent Text Pill ── */
+    .center-circle, #tooltip {
       position: absolute;
       top: 50%;
       left: 50%;
       transform: translate(-50%, -50%);
-      width: 132px;
-      height: 132px;
-      border-radius: 50%;
-      backdrop-filter: blur(25px) saturate(200%) !important;
-      -webkit-backdrop-filter: blur(25px) saturate(200%) !important;
-      background: rgba(255, 255, 255, 0.85) !important;
-      border: 2px dashed rgba(255, 122, 0, 0.5) !important;
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.08), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
+      background: transparent !important;
+      fill: transparent !important;
+      border: none !important;
+      box-shadow: none !important;
+      outline: none !important;
       display: flex;
-      flex-direction: column;
       align-items: center;
       justify-content: center;
       pointer-events: none;
       z-index: 30;
-      padding: 10px;
+      padding: 0;
       text-align: center;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-      will-change: transform, opacity, box-shadow, border-color;
+      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+      will-change: transform;
     }
 
-    .center-circle.active {
-      transform: translate(-50%, -50%) scale(1.04);
-      border-color: #FF7A00 !important;
-      border-style: solid !important;
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.1), 0 0 24px rgba(255, 122, 0, 0.45), inset 0 1px 2px rgba(255, 255, 255, 1) !important;
+    .center-circle.active, #tooltip.active {
+      transform: translate(-50%, -50%) !important;
     }
 
-    /* Sleek Drop Target Graphic Inside Center Hub */
-    .drop-zone-icon {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      margin-bottom: 2px;
-      pointer-events: none;
-      transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s ease;
+    body.dragging-file .center-circle,
+    body.dragging-file #tooltip {
+      transform: translate(-50%, -50%) !important;
     }
 
-    .drop-target-svg {
-      width: 26px;
-      height: 26px;
-      overflow: visible;
-    }
-
-    .target-radar-ring {
-      fill: rgba(255, 122, 0, 0.08);
-      stroke: #FF7A00;
-      stroke-width: 1.5px;
-      stroke-dasharray: 4 2.5;
-      opacity: 0.85;
-      transition: stroke-dasharray 0.2s ease, opacity 0.2s ease, fill 0.2s ease;
-    }
-
-    .target-arrow {
-      stroke: #FF7A00;
-      stroke-width: 2px;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-      fill: none;
-      transition: transform 0.2s ease;
-    }
-
-    .target-base {
-      stroke: #FF7A00;
-      stroke-width: 2.2px;
-      stroke-linecap: round;
-      fill: none;
-    }
-
-    .center-circle.active .target-radar-ring {
-      stroke-dasharray: none;
-      opacity: 1;
-      fill: rgba(255, 122, 0, 0.16);
-    }
-
-    .center-circle.active .target-arrow {
-      transform: translateY(1.5px);
-    }
-
-    /* Active File Dragging State (macOS Tangerine Drop Focus) */
-    body.dragging-file .center-circle {
-      transform: translate(-50%, -50%) scale(1.06);
-      border-color: #FF7A00 !important;
-      border-style: solid !important;
-      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.12), 0 0 30px rgba(255, 122, 0, 0.6), inset 0 0 16px rgba(255, 122, 0, 0.2) !important;
-    }
-
-    body.dragging-file .target-radar-ring {
-      stroke-dasharray: none;
-      fill: rgba(255, 122, 0, 0.2);
-      opacity: 1;
-    }
-
-    body.dragging-file .target-arrow {
-      animation: drop-arrow-bounce 0.8s ease-in-out infinite alternate;
-    }
-
-    @keyframes drop-arrow-bounce {
-      0% { transform: translateY(-1px); }
-      100% { transform: translateY(3px); }
-    }
-
-    .pill-category {
-      font-size: 9.5px !important;
-      font-weight: 750 !important;
-      letter-spacing: 1.2px !important;
-      text-transform: uppercase;
-      color: #FF7A00 !important;
-      margin-bottom: 2px;
-      line-height: 1;
-      transition: color 0.15s ease;
-    }
-
-    .pill-action {
-      font-size: 16px !important;
+    /* Floating Text Pill/Capsule Shape */
+    .center-action-label, #tooltip-text {
+      background: rgba(255, 255, 255, 0.7) !important;
+      padding: 8px 24px !important;
+      border-radius: 50px !important;
+      color: #333333 !important;
       font-weight: 800 !important;
-      letter-spacing: -0.2px !important;
-      color: #111111 !important;
-      text-align: center;
-      line-height: 1.15;
-      max-width: 105px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-      transition: color 0.15s ease;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15) !important;
+      backdrop-filter: blur(10px) !important;
+      -webkit-backdrop-filter: blur(10px) !important;
+      border: 1px solid rgba(255, 255, 255, 0.5) !important;
+      font-size: 14px !important;
+      letter-spacing: 0.5px !important;
+      text-transform: uppercase !important;
+      line-height: 1 !important;
+      text-align: center !important;
+      white-space: nowrap !important;
+      display: inline-flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      text-shadow: none !important;
+      -webkit-text-stroke: 0 !important;
+      filter: none !important;
+      -webkit-font-smoothing: antialiased !important;
+      -moz-osx-font-smoothing: grayscale !important;
+      transition: color 0.15s ease, border-color 0.15s ease;
     }
 
-    /* Spring Pop Animations */
-    @keyframes pampered-spring-pop {
-      0% { transform: scale(1); }
-      30% { transform: scale(1.15) translateY(-1px); }
-      60% { transform: scale(0.96) translateY(0.5px); }
-      80% { transform: scale(1.02); }
-      100% { transform: scale(1); }
+    /* Sharp Tangerine Center Text: Solid color, zero blur, zero glow */
+    .center-circle.active .center-action-label,
+    #tooltip.active #tooltip-text {
+      color: #FF7A00 !important;
+      text-shadow: none !important;
+      filter: none !important;
+      -webkit-font-smoothing: antialiased !important;
+      -moz-osx-font-smoothing: grayscale !important;
+      font-weight: 800 !important;
+      border-color: rgba(255, 122, 0, 0.6) !important;
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15) !important;
     }
 
-    @keyframes pampered-pin-wiggle {
-      0% { transform: rotate(0deg) scale(1); }
-      30% { transform: rotate(-48deg) scale(1.24); }
-      60% { transform: rotate(-26deg) scale(1.05); }
-      80% { transform: rotate(-37deg) scale(1.1); }
-      100% { transform: rotate(-35deg) scale(1); }
-    }
-
-    /* Close Window Button - Light Frosted Glass */
-    .close-app-btn {
-      position: absolute;
-      top: 18px;
-      left: 22px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      width: 32px;
-      height: 32px;
-      border-radius: 50%;
-      backdrop-filter: blur(25px) !important;
-      -webkit-backdrop-filter: blur(25px) !important;
-      background: rgba(255, 255, 255, 0.75) !important;
-      border: 1px solid rgba(255, 255, 255, 0.95) !important;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
-      color: #111111 !important;
-      cursor: pointer;
-      z-index: 100;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-      will-change: transform, background-color, box-shadow;
-    }
-
-    .close-app-btn:hover {
-      transform: scale(1.12) rotate(90deg);
-      background: rgba(255, 59, 48, 0.95) !important;
-      border-color: rgba(255, 255, 255, 0.95) !important;
-      color: #ffffff !important;
-      box-shadow: 0 6px 20px rgba(255, 59, 48, 0.45) !important;
-    }
-
-    .close-app-btn:active {
-      transform: scale(0.92) rotate(90deg) !important;
-      transition: transform 0.08s ease !important;
-    }
-
-    .close-app-btn svg {
-      width: 14px;
-      height: 14px;
-      stroke: currentColor;
-      stroke-width: 2.4;
-      stroke-linecap: round;
-      fill: none;
-    }
-
-    /* FLOAT Pin to Top Tool Button - Light Frosted Glass */
-    .float-pin-btn {
-      position: absolute;
-      top: 18px;
-      right: 22px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 7px 16px;
-      border-radius: 20px;
-      backdrop-filter: blur(25px) !important;
-      -webkit-backdrop-filter: blur(25px) !important;
-      background: rgba(255, 255, 255, 0.75) !important;
-      border: 1px solid rgba(255, 255, 255, 0.95) !important;
-      box-shadow: 0 4px 14px rgba(0, 0, 0, 0.08), inset 0 1px 1px rgba(255, 255, 255, 1);
-      color: #111111 !important;
-      font-family: inherit;
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.6px;
-      cursor: pointer;
-      z-index: 100;
-      transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
-      will-change: transform, box-shadow;
-    }
-
-    .float-pin-btn:hover {
-      transform: scale(1.06) translateY(-1px);
-      background: rgba(255, 255, 255, 0.95) !important;
-      border-color: rgba(255, 255, 255, 1) !important;
-      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), inset 0 1px 1px rgba(255, 255, 255, 1);
-      color: #000000 !important;
-    }
-
-    .float-pin-btn:active {
-      transform: scale(0.94) translateY(1px) !important;
-      transition: transform 0.08s ease !important;
-    }
-
-    .float-pin-btn.pampered-bump {
-      animation: pampered-spring-pop 0.42s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    .float-pin-btn.active,
-    .float-active {
-      background: #FF7A00 !important;
-      border-color: rgba(255, 255, 255, 0.95) !important;
-      color: #ffffff !important;
-      box-shadow: 0 6px 20px rgba(255, 122, 0, 0.45), inset 0 1px 1.5px rgba(255, 255, 255, 0.5) !important;
-    }
-
-    .float-pin-btn svg {
-      width: 14px;
-      height: 14px;
-      fill: currentColor;
-      transition: transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
-    }
-
-    .float-pin-btn.active svg {
-      animation: pampered-pin-wiggle 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+    /* Hidden elements kept for PyQt6 compatibility */
+    .pill-category {
+      display: none !important;
     }
   </style>
 </head>
 <body>
   <div class="app-canvas">
-    <!-- Close Window Button -->
+    <!-- Close Window Button (Light Frosted Circle) -->
     <button id="close-app-btn" class="close-app-btn" title="Close QuickDrop" aria-label="Close QuickDrop" onclick="triggerActionIfApplicable('CLOSE')">
       <svg viewBox="0 0 24 24">
         <line x1="18" y1="6" x2="6" y2="18"></line>
@@ -484,7 +402,7 @@
       </svg>
     </button>
 
-    <!-- FLOAT Pin to Top Toggle Button -->
+    <!-- FLOAT Pin to Top Toggle Button (Light Frosted Pill) -->
     <button id="float-pin-btn" class="float-pin-btn active float-active" title="Pinned to Top (Click to unpin)" aria-pressed="true" onclick="triggerActionIfApplicable('FLOAT')">
       <svg viewBox="0 0 24 24">
         <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6l1 1 1-1v-6H18v-2l-2-2z"/>
@@ -492,105 +410,35 @@
       <span id="float-pin-label">FLOAT</span>
     </button>
 
-    <!-- Main Radial Menu Container -->
+    <!-- Main Radial Menu Container (Light Frosted Glass: rgba(255, 255, 255, 0.1)) -->
     <div class="radial-menu main-container" id="radial-menu">
-      <!-- Apple Light Frosted Glass Donut Platter -->
-      <div class="glass-donut-backdrop"></div>
-
-      <!-- Center Circle: Modern Drop Target Hub -->
-      <div class="center-circle center-pill-container center-pill" id="tooltip">
-        <div class="drop-zone-icon" id="drop-zone-icon">
-          <svg class="drop-target-svg" viewBox="0 0 32 32">
-            <circle cx="16" cy="16" r="14" class="target-radar-ring" />
-            <path d="M16 8.5v11m0 0l-3.5-3.5m3.5 3.5l3.5-3.5" class="target-arrow" />
-            <path d="M10 22.5h12" class="target-base" />
-          </svg>
-        </div>
-        <div class="pill-category" id="tooltip-category">Convert to</div>
-        <div class="pill-action" id="tooltip-text">PDF</div>
-      </div>
-
-      <!-- SVG Continuous Donut Ring with 8 Seamless Wedge Slices -->
+      <!-- SVG Radial Ring with 8 Donut-Style Organic Rounded Cards -->
       <svg class="radial-svg" viewBox="0 0 380 380">
         <defs>
-          <linearGradient id="tangerine-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-            <stop offset="0%" stop-color="#FF9500" />
-            <stop offset="45%" stop-color="#FF7A00" />
-            <stop offset="100%" stop-color="#FF5100" />
-          </linearGradient>
-
-          <!-- ── Action & Tool Icons (Shift State) ── -->
-          <symbol id="icon-crop" viewBox="0 0 24 24">
-            <path d="M6 2v14a2 2 0 0 0 2 2h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <path d="M18 22V8a2 2 0 0 0-2-2H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </symbol>
-
-          <symbol id="icon-redact" viewBox="0 0 24 24">
-            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <line x1="2" y1="2" x2="22" y2="22" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </symbol>
-
-          <symbol id="icon-compress" viewBox="0 0 24 24">
-            <path d="M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <path d="M12 3v6m0 0l-3.5-3.5m3.5 3.5l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <path d="M12 21v-6m0 0l-3.5 3.5m3.5-3.5l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </symbol>
-
-          <symbol id="icon-add-bg" viewBox="0 0 24 24">
-            <rect x="3" y="5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <circle cx="7" cy="9" r="1.2" fill="currentColor"/>
-            <path d="M3 14l3.5-3 2.5 2 3-3 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <path d="M19 3v6 M16 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-          </symbol>
-
-          <symbol id="icon-watermark" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <path d="M7.5 9.5l2 5.5 2.5-4 2.5 4 2-5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-          </symbol>
-
-          <symbol id="icon-metadata" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <circle cx="12" cy="8" r="1.2" fill="currentColor"/>
-            <path d="M12 11.5v5.5m-1 0h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-          </symbol>
-
-          <symbol id="icon-edit" viewBox="0 0 24 24">
-            <line x1="4" y1="7" x2="20" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <line x1="4" y1="17" x2="20" y2="17" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            <circle cx="9" cy="7" r="2.5" fill="currentColor"/>
-            <circle cx="15" cy="17" r="2.5" fill="currentColor"/>
-          </symbol>
-
-          <symbol id="icon-annotate" viewBox="0 0 24 24">
-            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
-            <path d="M3 22h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </symbol>
-
-          <!-- ── Conversion Format Icons (Default State) ── -->
+          <!-- ── State 1: File Formats Icons ── -->
           <symbol id="icon-pdf" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
             <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-            <path d="M8 14h2a1.5 1.5 0 0 0 0-3H8v5 M13 11v5 M16 11h2a1.5 1.5 0 0 1 0 3h-2v2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/>
+            <path d="M9 13v4m0-4h2a1.5 1.5 0 0 1 0 3H9m5-3v4m0-4h1.5a2 2 0 0 1 0 4H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-jpg" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="8" cy="8" r="1.5" fill="currentColor"/>
+            <path d="M4 18l5-5 3 3 4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-png" viewBox="0 0 24 24">
+            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="8.5" cy="8.5" r="1.5" fill="currentColor"/>
+            <polyline points="21 15 16 10 5 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
           </symbol>
 
           <symbol id="icon-docx" viewBox="0 0 24 24">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
             <polyline points="14 2 14 8 20 8" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linejoin="round"/>
-            <line x1="8" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="8" y1="15" x2="16" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="8" y1="18" x2="13" y2="18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-          </symbol>
-
-          <symbol id="icon-png" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <polygon points="12 7 17 12 12 17 7 12" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
-            <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
-          </symbol>
-
-          <symbol id="icon-jpg" viewBox="0 0 24 24">
-            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <circle cx="8.5" cy="8.5" r="1.6" fill="currentColor"/>
-            <path d="M21 15l-5-5L5 21" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <line x1="8" y1="13" x2="16" y2="13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="8" y1="17" x2="14" y2="17" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </symbol>
 
           <symbol id="icon-webp" viewBox="0 0 24 24">
@@ -601,12 +449,11 @@
 
           <symbol id="icon-heic" viewBox="0 0 24 24">
             <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <line x1="12" y1="3" x2="12" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="18.3" y1="7.5" x2="14" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="18.3" y1="16.5" x2="14" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="12" y1="21" x2="12" y2="16" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="5.7" y1="16.5" x2="10" y2="14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="5.7" y1="7.5" x2="10" y2="10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.6" fill="none"/>
+            <line x1="12" y1="3" x2="12" y2="6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="12" y1="18" x2="12" y2="21" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="3" y1="12" x2="6" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <line x1="18" y1="12" x2="21" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
           </symbol>
 
           <symbol id="icon-tiff" viewBox="0 0 24 24">
@@ -616,28 +463,70 @@
           </symbol>
 
           <symbol id="icon-avif" viewBox="0 0 24 24">
-            <circle cx="12" cy="12" r="4.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <line x1="12" y1="2" x2="12" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="12" y1="19" x2="12" y2="22" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="2" y1="12" x2="5" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="19" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="4.9" y1="4.9" x2="7.1" y2="7.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="16.9" y1="16.9" x2="19.1" y2="19.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="4.9" y1="19.1" x2="7.1" y2="16.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="16.9" y1="7.1" x2="19.1" y2="4.9" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+            <rect x="3" y="3" width="18" height="18" rx="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M12 7l1.5 3.5L17 12l-3.5 1.5L12 17l-1.5-3.5L7 12l3.5-1.5z" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linejoin="round"/>
           </symbol>
 
-          <!-- ── Utility Tool Icons (Ctrl State) ── -->
-          <symbol id="icon-airdrop" viewBox="0 0 24 24">
-            <circle cx="12" cy="18" r="1.8" fill="currentColor"/>
-            <path d="M8 14.5a5.5 5.5 0 0 1 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-            <path d="M5 11a10 10 0 0 1 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-            <path d="M2 7.5a14.5 14.5 0 0 1 20 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          <!-- ── State 2: Action Tools Icons ── -->
+          <symbol id="icon-crop" viewBox="0 0 24 24">
+            <path d="M6 2v14a2 2 0 0 0 2 2h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M18 22V8a2 2 0 0 0-2-2H2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-compress" viewBox="0 0 24 24">
+            <path d="M4 12h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M12 3v6m0 0l-3.5-3.5m3.5 3.5l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M12 21v-6m0 0l-3.5 3.5m3.5-3.5l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-redact" viewBox="0 0 24 24">
+            <rect x="3" y="6" width="18" height="12" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="6" y1="12" x2="18" y2="12" stroke="currentColor" stroke-width="3" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-add-bg" viewBox="0 0 24 24">
+            <rect x="3" y="5" width="13" height="13" rx="2" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <circle cx="7" cy="9" r="1.2" fill="currentColor"/>
+            <path d="M3 14l3.5-3 2.5 2 3-3 4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            <path d="M19 3v6 M16 6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-edit" viewBox="0 0 24 24">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-annotate" viewBox="0 0 24 24">
+            <path d="M12 20h9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-metadata" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="12" y1="8" x2="12" y2="8.01" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+            <line x1="12" y1="12" x2="12" y2="16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-watermark" viewBox="0 0 24 24">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M8 15l2.5-6 1.5 3.5 1.5-3.5L16 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <!-- ── State 3: Utility Tools Icons ── -->
+          <symbol id="icon-ai-detect" viewBox="0 0 24 24">
+            <path d="M12 2a10 10 0 1 0 10 10A10 10 0 0 0 12 2zm0 18a8 8 0 1 1 8-8 8 8 0 0 1-8 8z" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M12 6l1.5 3.5L17 11l-3.5 1.5L12 16l-1.5-3.5L7 11l3.5-1.5z" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linejoin="round"/>
           </symbol>
 
           <symbol id="icon-ocr" viewBox="0 0 24 24">
             <path d="M4 8V5a1 1 0 0 1 1-1h3 M16 4h3a1 1 0 0 1 1 1v3 M4 16v3a1 1 0 0 0 1 1h3 M16 20h3a1 1 0 0 0 1-1v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
             <path d="M9 10h6 M12 10v6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+          </symbol>
+
+          <symbol id="icon-translate" viewBox="0 0 24 24">
+            <path d="M5 8l4 8 M9 8L5 16 M4 14h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+            <path d="M14 6h7 M17.5 6v3 M14 9c1 3 3 5 6 6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
+            <path d="M16 13c1.5 1.5 3 2.5 4.5 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" fill="none"/>
           </symbol>
 
           <symbol id="icon-terminal" viewBox="0 0 24 24">
@@ -646,24 +535,10 @@
             <line x1="13" y1="15" x2="17" y2="15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </symbol>
 
-          <symbol id="icon-screenshot" viewBox="0 0 24 24">
-            <path d="M3 7V5a2 2 0 0 1 2-2h2 M17 3h2a2 2 0 0 1 2 2v2 M21 17v2a2 2 0 0 1-2 2h-2 M7 21H5a2 2 0 0 1-2-2v-2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
-            <circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8" fill="none"/>
-          </symbol>
-
-          <symbol id="icon-color" viewBox="0 0 24 24">
-            <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 4 6.5.5.2.8-.2.8-.5v-1c0-1.7 1.3-3 3-3h1.5c2.5 0 4.5-2 4.5-4.5 0-4.1-3.6-7.5-7.8-7.5z" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <circle cx="7.5" cy="9.5" r="1.2" fill="currentColor"/>
-            <circle cx="11.5" cy="6.5" r="1.2" fill="currentColor"/>
-            <circle cx="16" cy="8.5" r="1.2" fill="currentColor"/>
-          </symbol>
-
-          <symbol id="icon-keep-awake" viewBox="0 0 24 24">
-            <path d="M17 8h1a3.5 3.5 0 0 1 0 7h-1" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <path d="M3 8h14v7a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V8z" stroke="currentColor" stroke-width="1.8" fill="none"/>
-            <line x1="6" y1="2" x2="6" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="10" y1="2" x2="10" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-            <line x1="14" y1="2" x2="14" y2="5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+          <symbol id="icon-timer" viewBox="0 0 24 24">
+            <circle cx="12" cy="13" r="8" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <path d="M12 9v4l2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <path d="M10 2h4 M12 2v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
           </symbol>
 
           <symbol id="icon-record" viewBox="0 0 24 24">
@@ -672,94 +547,142 @@
             <circle cx="9" cy="12" r="2.5" fill="currentColor"/>
           </symbol>
 
-          <symbol id="icon-float" viewBox="0 0 24 24">
-            <path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6l1 1 1-1v-6H18v-2l-2-2z" fill="currentColor" stroke="none"/>
+          <symbol id="icon-calc" viewBox="0 0 24 24">
+            <rect x="4" y="3" width="16" height="18" rx="3" stroke="currentColor" stroke-width="1.8" fill="none"/>
+            <line x1="8" y1="7" x2="16" y2="7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="8" y1="12" x2="10" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="14" y1="12" x2="16" y2="12" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="8" y1="16" x2="10" y2="16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+            <line x1="14" y1="16" x2="16" y2="16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+          </symbol>
+
+          <symbol id="icon-airdrop" viewBox="0 0 24 24">
+            <circle cx="12" cy="18" r="1.8" fill="currentColor"/>
+            <path d="M8 14.5a5.5 5.5 0 0 1 8 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M5 11a10 10 0 0 1 14 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
+            <path d="M2 7.5a14.5 14.5 0 0 1 20 0" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>
           </symbol>
         </defs>
 
-        <!-- Circular Donut Base Track -->
-        <circle class="donut-track" cx="190" cy="190" r="124" />
-
-        <!-- 0: PDF / CROP / AIRDROP (Top / 0°) -->
+        <!-- 0: PDF / CROP / AI DETECT (Top / 0°) -->
         <g id="petal-group-0" class="petal-group action-btn">
-          <path id="slice-0" class="petal-slice petal" data-index="0" data-format="PDF" d="M 162.45 123.48 L 122.65 27.40 A 176.00 176.00 0 0 1 257.35 27.40 L 217.55 123.48 A 72.00 72.00 0 0 0 162.45 123.48 Z" />
-          <g id="petal-icon-0" class="petal-icon" transform="translate(190.00, 55.00)">
-            <use id="icon-use-0" href="#icon-pdf" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-0" class="segment-label" x="190.00" y="77.00">PDF</text>
+          <path id="slice-0" class="petal-slice petal" data-index="0" data-format="PDF" stroke="transparent" stroke-width="14" d="M 157.24 89.19 L 138.70 32.12 A 12.00 12.00 0 0 1 146.52 17.39 A 178.00 178.00 0 0 1 233.48 17.39 A 12.00 12.00 0 0 1 241.30 32.12 L 222.76 89.19 A 12.00 12.00 0 0 1 207.43 97.63 A 94.00 94.00 0 0 0 172.57 97.63 A 12.00 12.00 0 0 1 157.24 89.19 Z" />
+          <foreignObject x="154.00" y="28.00" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-0" href="#icon-pdf" width="20" height="20" />
+              </svg>
+              <span id="label-0" class="segment-label">PDF</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 1: DOCX / REDACT / OCR (Top-Right / 45°) -->
+        <!-- 1: JPG / COMPRESS / OCR (Top-Right / 45°) -->
         <g id="petal-group-1" class="petal-group action-btn">
-          <path id="slice-1" class="petal-slice petal" data-index="1" data-format="DOCX" d="M 217.55 123.48 L 257.35 27.40 A 176.00 176.00 0 0 1 352.60 122.65 L 256.52 162.45 A 72.00 72.00 0 0 0 217.55 123.48 Z" />
-          <g id="petal-icon-1" class="petal-icon" transform="translate(277.68, 91.32)">
-            <use id="icon-use-1" href="#icon-docx" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-1" class="segment-label" x="277.68" y="113.32">DOCX</text>
+          <path id="slice-1" class="petal-slice petal" data-index="1" data-format="JPG" stroke="transparent" stroke-width="14" d="M 238.12 95.55 L 265.36 42.09 A 12.00 12.00 0 0 1 281.31 37.20 A 178.00 178.00 0 0 1 342.80 98.69 A 12.00 12.00 0 0 1 337.91 114.64 L 284.45 141.88 A 12.00 12.00 0 0 1 267.64 137.01 A 94.00 94.00 0 0 0 242.99 112.36 A 12.00 12.00 0 0 1 238.12 95.55 Z" />
+          <foreignObject x="250.17" y="67.83" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-1" href="#icon-jpg" width="20" height="20" />
+              </svg>
+              <span id="label-1" class="segment-label">JPG</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 2: PNG / COMPRESS / TERMINAL (Right / 90°) -->
+        <!-- 2: PNG / REDACT / TRANSLATE (Right / 90°) -->
         <g id="petal-group-2" class="petal-group action-btn">
-          <path id="slice-2" class="petal-slice petal" data-index="2" data-format="PNG" d="M 256.52 162.45 L 352.60 122.65 A 176.00 176.00 0 0 1 352.60 257.35 L 256.52 217.55 A 72.00 72.00 0 0 0 256.52 162.45 Z" />
-          <g id="petal-icon-2" class="petal-icon" transform="translate(314.00, 179.00)">
-            <use id="icon-use-2" href="#icon-png" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-2" class="segment-label" x="314.00" y="201.00">PNG</text>
+          <path id="slice-2" class="petal-slice petal" data-index="2" data-format="PNG" stroke="transparent" stroke-width="14" d="M 290.81 157.24 L 347.88 138.70 A 12.00 12.00 0 0 1 362.61 146.52 A 178.00 178.00 0 0 1 362.61 233.48 A 12.00 12.00 0 0 1 347.88 241.30 L 290.81 222.76 A 12.00 12.00 0 0 1 282.37 207.43 A 94.00 94.00 0 0 0 282.37 172.57 A 12.00 12.00 0 0 1 290.81 157.24 Z" />
+          <foreignObject x="290.00" y="164.00" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-2" href="#icon-png" width="20" height="20" />
+              </svg>
+              <span id="label-2" class="segment-label">PNG</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 3: JPG / ADD BG / SCREENSHOT (Bottom-Right / 135°) -->
+        <!-- 3: DOCX / ADD BG / TERMINAL (Bottom-Right / 135°) -->
         <g id="petal-group-3" class="petal-group action-btn">
-          <path id="slice-3" class="petal-slice petal" data-index="3" data-format="JPG" d="M 256.52 217.55 L 352.60 257.35 A 176.00 176.00 0 0 1 257.35 352.60 L 217.55 256.52 A 72.00 72.00 0 0 0 256.52 217.55 Z" />
-          <g id="petal-icon-3" class="petal-icon" transform="translate(277.68, 266.68)">
-            <use id="icon-use-3" href="#icon-jpg" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-3" class="segment-label" x="277.68" y="288.68">JPG</text>
+          <path id="slice-3" class="petal-slice petal" data-index="3" data-format="DOCX" stroke="transparent" stroke-width="14" d="M 284.45 238.12 L 337.91 265.36 A 12.00 12.00 0 0 1 342.80 281.31 A 178.00 178.00 0 0 1 281.31 342.80 A 12.00 12.00 0 0 1 265.36 337.91 L 238.12 284.45 A 12.00 12.00 0 0 1 242.99 267.64 A 94.00 94.00 0 0 0 267.64 242.99 A 12.00 12.00 0 0 1 284.45 238.12 Z" />
+          <foreignObject x="250.17" y="260.17" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-3" href="#icon-docx" width="20" height="20" />
+              </svg>
+              <span id="label-3" class="segment-label">DOCX</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 4: WEBP / WATERMARK / COLOR (Bottom / 180°) -->
+        <!-- 4: WEBP / EDIT / TIMER (Bottom / 180°) -->
         <g id="petal-group-4" class="petal-group action-btn">
-          <path id="slice-4" class="petal-slice petal" data-index="4" data-format="WEBP" d="M 217.55 256.52 L 257.35 352.60 A 176.00 176.00 0 0 1 122.65 352.60 L 162.45 256.52 A 72.00 72.00 0 0 0 217.55 256.52 Z" />
-          <g id="petal-icon-4" class="petal-icon" transform="translate(190.00, 303.00)">
-            <use id="icon-use-4" href="#icon-webp" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-4" class="segment-label" x="190.00" y="325.00">WEBP</text>
+          <path id="slice-4" class="petal-slice petal" data-index="4" data-format="WEBP" stroke="transparent" stroke-width="14" d="M 222.76 290.81 L 241.30 347.88 A 12.00 12.00 0 0 1 233.48 362.61 A 178.00 178.00 0 0 1 146.52 362.61 A 12.00 12.00 0 0 1 138.70 347.88 L 157.24 290.81 A 12.00 12.00 0 0 1 172.57 282.37 A 94.00 94.00 0 0 0 207.43 282.37 A 12.00 12.00 0 0 1 222.76 290.81 Z" />
+          <foreignObject x="154.00" y="300.00" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-4" href="#icon-webp" width="20" height="20" />
+              </svg>
+              <span id="label-4" class="segment-label">WEBP</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 5: HEIC / METADATA / KEEP AWAKE (Bottom-Left / 225°) -->
+        <!-- 5: HEIC / ANNOTATE / RECORD (Bottom-Left / 225°) -->
         <g id="petal-group-5" class="petal-group action-btn">
-          <path id="slice-5" class="petal-slice petal" data-index="5" data-format="HEIC" d="M 162.45 256.52 L 122.65 352.60 A 176.00 176.00 0 0 1 27.40 257.35 L 123.48 217.55 A 72.00 72.00 0 0 0 162.45 256.52 Z" />
-          <g id="petal-icon-5" class="petal-icon" transform="translate(102.32, 266.68)">
-            <use id="icon-use-5" href="#icon-heic" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-5" class="segment-label" x="102.32" y="288.68">HEIC</text>
+          <path id="slice-5" class="petal-slice petal" data-index="5" data-format="HEIC" stroke="transparent" stroke-width="14" d="M 141.88 284.45 L 114.64 337.91 A 12.00 12.00 0 0 1 98.69 342.80 A 178.00 178.00 0 0 1 37.20 281.31 A 12.00 12.00 0 0 1 42.09 265.36 L 95.55 238.12 A 12.00 12.00 0 0 1 112.36 242.99 A 94.00 94.00 0 0 0 137.01 267.64 A 12.00 12.00 0 0 1 141.88 284.45 Z" />
+          <foreignObject x="57.83" y="260.17" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-5" href="#icon-heic" width="20" height="20" />
+              </svg>
+              <span id="label-5" class="segment-label">HEIC</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 6: TIFF / EDIT / RECORD (Left / 270°) -->
+        <!-- 6: TIFF / METADATA / CALC (Left / 270°) -->
         <g id="petal-group-6" class="petal-group action-btn">
-          <path id="slice-6" class="petal-slice petal" data-index="6" data-format="TIFF" d="M 123.48 217.55 L 27.40 257.35 A 176.00 176.00 0 0 1 27.40 122.65 L 123.48 162.45 A 72.00 72.00 0 0 0 123.48 217.55 Z" />
-          <g id="petal-icon-6" class="petal-icon" transform="translate(66.00, 179.00)">
-            <use id="icon-use-6" href="#icon-tiff" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-6" class="segment-label" x="66.00" y="201.00">TIFF</text>
+          <path id="slice-6" class="petal-slice petal" data-index="6" data-format="TIFF" stroke="transparent" stroke-width="14" d="M 89.19 222.76 L 32.12 241.30 A 12.00 12.00 0 0 1 17.39 233.48 A 178.00 178.00 0 0 1 17.39 146.52 A 12.00 12.00 0 0 1 32.12 138.70 L 89.19 157.24 A 12.00 12.00 0 0 1 97.63 172.57 A 94.00 94.00 0 0 0 97.63 207.43 A 12.00 12.00 0 0 1 89.19 222.76 Z" />
+          <foreignObject x="18.00" y="164.00" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-6" href="#icon-tiff" width="20" height="20" />
+              </svg>
+              <span id="label-6" class="segment-label">TIFF</span>
+            </div>
+          </foreignObject>
         </g>
 
-        <!-- 7: AVIF / ANNOTATE / FLOAT (Top-Left / 315°) -->
+        <!-- 7: AVIF / WATERMARK / AIRDROP (Top-Left / 315°) -->
         <g id="petal-group-7" class="petal-group action-btn">
-          <path id="slice-7" class="petal-slice petal" data-index="7" data-format="AVIF" d="M 123.48 162.45 L 27.40 122.65 A 176.00 176.00 0 0 1 122.65 27.40 L 162.45 123.48 A 72.00 72.00 0 0 0 123.48 162.45 Z" />
-          <g id="petal-icon-7" class="petal-icon" transform="translate(102.32, 91.32)">
-            <use id="icon-use-7" href="#icon-avif" width="20" height="20" x="-10" y="-10" />
-          </g>
-          <text id="label-7" class="segment-label" x="102.32" y="113.32">AVIF</text>
+          <path id="slice-7" class="petal-slice petal" data-index="7" data-format="AVIF" stroke="transparent" stroke-width="14" d="M 95.55 141.88 L 42.09 114.64 A 12.00 12.00 0 0 1 37.20 98.69 A 178.00 178.00 0 0 1 98.69 37.20 A 12.00 12.00 0 0 1 114.64 42.09 L 141.88 95.55 A 12.00 12.00 0 0 1 137.01 112.36 A 94.00 94.00 0 0 0 112.36 137.01 A 12.00 12.00 0 0 1 95.55 141.88 Z" />
+          <foreignObject x="57.83" y="67.83" width="72" height="52" class="petal-foreign">
+            <div class="petal-content">
+              <svg class="petal-icon" viewBox="0 0 24 24">
+                <use id="icon-use-7" href="#icon-avif" width="20" height="20" />
+              </svg>
+              <span id="label-7" class="segment-label">AVIF</span>
+            </div>
+          </foreignObject>
         </g>
       </svg>
+    </div>
+
+    <!-- Completely Transparent Center Cavity: Floating Translucent Text Pill -->
+    <div class="center-circle" id="tooltip">
+      <div class="center-action-label" id="tooltip-text">PDF</div>
+      <div class="pill-category" id="tooltip-category"></div>
     </div>
   </div>
 
   <script>
-    // Global variable accessible by Python dropEvent
+    // Global variables accessible by Python dropEvent / QWebChannel
     window.currentHoveredAction = null;
     window.isProcessing = false;
     window.isFloating = true;
+    window.isKeepAwake = false;
 
     /**
      * Updates the UI visual state of the FLOAT button.
@@ -767,10 +690,6 @@
     function updateFloatVisualState() {
       const pinBtn = document.getElementById('float-pin-btn');
       if (pinBtn) {
-        pinBtn.classList.remove('pampered-bump');
-        void pinBtn.offsetWidth;
-        pinBtn.classList.add('pampered-bump');
-
         if (window.isFloating) {
           pinBtn.classList.add('active', 'float-active');
           pinBtn.setAttribute('title', 'Pinned to Top (Click to unpin)');
@@ -788,102 +707,82 @@
       updateFloatVisualState();
     };
 
-    window.isKeepAwake = false;
-
     window.setKeepAwakeState = function(awake) {
       window.isKeepAwake = Boolean(awake);
     };
 
-    // ── Tangerine 3 Menus: Default Formats, Shift Tools, Control Utilities ──
-    const DEFAULT_FORMATS = [
-      "PDF", "DOCX", "PNG", "JPG", "WEBP", "HEIC", "TIFF", "AVIF"
+    // ── Tangerine 3 Persistent States ──
+
+    // State 1: File Formats (Toggle with Control)
+    const STATE_1_FORMATS = [
+      "PDF", "JPG", "PNG", "DOCX", "WEBP", "HEIC", "TIFF", "AVIF"
     ];
 
-    const SHIFT_TOOLS = [
-      "CROP", "REDACT", "COMPRESS", "ADD BG", "WATERMARK", "METADATA", "EDIT", "ANNOTATE"
+    // State 2: Action Tools (Toggle with Shift)
+    const STATE_2_TOOLS = [
+      "CROP", "COMPRESS", "REDACT", "ADD BG", "EDIT", "ANNOTATE", "METADATA", "WATERMARK"
     ];
 
-    const CTRL_TOOLS = [
-      "AIRDROP", "OCR", "TERMINAL", "SCREENSHOT", "COLOR", "KEEP AWAKE", "RECORD", "FLOAT"
+    // State 3: Utility Tools (Toggle with Space)
+    const STATE_3_UTILITIES = [
+      "AI DETECT", "OCR", "TRANSLATE", "TERMINAL", "TIMER", "RECORD", "CALC", "AIRDROP"
     ];
 
     // Action-to-Icon identifier dictionary
     const ACTION_ICONS = {
-      // Conversion Formats (DEFAULT State)
+      // State 1: Formats
       "PDF": "icon-pdf",
-      "DOCX": "icon-docx",
-      "PNG": "icon-png",
       "JPG": "icon-jpg",
+      "PNG": "icon-png",
+      "DOCX": "icon-docx",
       "WEBP": "icon-webp",
       "HEIC": "icon-heic",
       "TIFF": "icon-tiff",
       "AVIF": "icon-avif",
 
-      // Action Tools (Shift State)
+      // State 2: Action Tools
       "CROP": "icon-crop",
-      "REDACT": "icon-redact",
       "COMPRESS": "icon-compress",
+      "REDACT": "icon-redact",
       "ADD BG": "icon-add-bg",
-      "WATERMARK": "icon-watermark",
-      "METADATA": "icon-metadata",
       "EDIT": "icon-edit",
       "ANNOTATE": "icon-annotate",
+      "METADATA": "icon-metadata",
+      "WATERMARK": "icon-watermark",
 
-      // Utility Tools (Ctrl State)
-      "AIRDROP": "icon-airdrop",
+      // State 3: Utility Tools
+      "AI DETECT": "icon-ai-detect",
       "OCR": "icon-ocr",
+      "TRANSLATE": "icon-translate",
       "TERMINAL": "icon-terminal",
-      "SCREENSHOT": "icon-screenshot",
-      "COLOR": "icon-color",
-      "KEEP AWAKE": "icon-keep-awake",
-      "AWAKE ☕": "icon-keep-awake",
+      "TIMER": "icon-timer",
       "RECORD": "icon-record",
-      "FLOAT": "icon-float",
-      "FLOAT 📌": "icon-float"
+      "CALC": "icon-calc",
+      "AIRDROP": "icon-airdrop",
+      "SHARE": "icon-airdrop"
     };
 
-    let currentModifier = 'DEFAULT';
+    let currentState = 1; // 1 | 2 | 3 (strictly persistent)
     let currentHoverIndex = -1;
     let isFileDragging = false;
 
     /**
-     * Resets the center circle text based on active modifier.
+     * Gets the active array of actions for the current locked state.
      */
-    function resetTooltipText() {
-      if (window.isProcessing) return;
-      const tooltipText = document.getElementById('tooltip-text');
-      const tooltipCategory = document.getElementById('tooltip-category');
-      if (tooltipCategory) {
-        if (currentModifier === 'SHIFT') {
-          tooltipCategory.textContent = 'Tool';
-        } else if (currentModifier === 'CTRL') {
-          tooltipCategory.textContent = 'Utility';
-        } else {
-          tooltipCategory.textContent = 'Convert to';
-        }
-      }
-      if (tooltipText) {
-        if (currentModifier === 'SHIFT') {
-          tooltipText.textContent = SHIFT_TOOLS[0];
-        } else if (currentModifier === 'CTRL') {
-          tooltipText.textContent = CTRL_TOOLS[0];
-        } else {
-          tooltipText.textContent = DEFAULT_FORMATS[0];
-        }
-      }
+    function getCurrentStateArray() {
+      if (currentState === 1) return STATE_1_FORMATS;
+      if (currentState === 2) return STATE_2_TOOLS;
+      if (currentState === 3) return STATE_3_UTILITIES;
+      return STATE_1_FORMATS;
     }
 
     /**
-     * Updates petal text and data-format attributes across all 8 slices instantly.
+     * Updates petal text, data-format, and icon across all 8 slices.
      * @param {string[]} stateArray - Array of 8 action strings
-     * @param {string} [modifierName] - 'DEFAULT' | 'SHIFT' | 'CTRL'
      */
-    function applyPetalsState(stateArray, modifierName) {
-      if (modifierName) {
-        currentModifier = modifierName;
-      }
-
-      stateArray.forEach((action, index) => {
+    function applyPetalsState(stateArray) {
+      for (let index = 0; index < 8; index++) {
+        const action = stateArray[index];
         const slice = document.getElementById(`slice-${index}`);
         const label = document.getElementById(`label-${index}`);
         const iconUse = document.getElementById(`icon-use-${index}`);
@@ -907,50 +806,62 @@
           iconUse.setAttribute('href', `#${iconId}`);
           iconUse.setAttributeNS('http://www.w3.org/1999/xlink', 'xlink:href', `#${iconId}`);
         }
-      });
+      }
 
-      // Update center circle dynamically
-      if (currentHoverIndex >= 0 && currentHoverIndex < stateArray.length) {
-        updateTooltipText(currentHoverIndex);
+      // Refresh center circle text if hovering a slice
+      if (currentHoverIndex >= 0 && currentHoverIndex < 8) {
+        updateTooltipContent(currentHoverIndex);
       } else {
-        resetTooltipText();
+        resetCenterCircle();
       }
     }
 
     /**
-     * Updates the center circle text dynamically based on the current active petal.
+     * Resets the center circle to default idle state (shows the current state default action).
+     */
+    function resetCenterCircle() {
+      if (window.isProcessing) return;
+      const centerLabel = document.getElementById('tooltip-text');
+      const tooltip = document.getElementById('tooltip');
+
+      if (centerLabel) {
+        const currentArray = getCurrentStateArray();
+        centerLabel.textContent = currentArray[0] || 'PDF';
+      }
+      if (tooltip) {
+        tooltip.classList.remove('active');
+      }
+    }
+
+    /**
+     * Dynamically displays the hovered action/format in the center donut hole.
      * @param {number} index
      */
-    function updateTooltipText(index) {
+    function updateTooltipContent(index) {
       if (window.isProcessing) return;
-      const label = document.getElementById(`label-${index}`);
-      if (!label) {
+      const currentArray = getCurrentStateArray();
+      const action = currentArray[index];
+      if (!action) {
         window.currentHoveredAction = null;
         return;
       }
-      const currentText = label.textContent.trim();
-      window.currentHoveredAction = currentText;
 
-      const tooltipText = document.getElementById('tooltip-text');
-      const tooltipCategory = document.getElementById('tooltip-category');
+      window.currentHoveredAction = action;
 
-      if (tooltipText) {
-        tooltipText.textContent = currentText;
+      const centerLabel = document.getElementById('tooltip-text');
+      const tooltip = document.getElementById('tooltip');
+
+      if (centerLabel) {
+        centerLabel.textContent = action;
       }
-      if (tooltipCategory) {
-        if (currentModifier === 'SHIFT') {
-          tooltipCategory.textContent = 'Tool';
-        } else if (currentModifier === 'CTRL') {
-          tooltipCategory.textContent = 'Utility';
-        } else {
-          tooltipCategory.textContent = 'Convert to';
-        }
+
+      if (tooltip) {
+        tooltip.classList.add('active');
       }
     }
 
     // ── Tactile Acoustic Feedback (Web Audio API) ──
     let audioCtx = null;
-
     function getAudioContext() {
       if (!audioCtx) {
         const AudioContextClass = window.AudioContext || window.webkitAudioContext;
@@ -968,9 +879,7 @@
       window.addEventListener(evt, () => {
         try {
           const ctx = getAudioContext();
-          if (ctx && ctx.state === 'suspended') {
-            ctx.resume();
-          }
+          if (ctx && ctx.state === 'suspended') ctx.resume();
         } catch (_) {}
       }, { once: true, passive: true });
     });
@@ -1012,43 +921,17 @@
       for (let i = 0; i < 8; i++) {
         const group = document.getElementById(`petal-group-${i}`);
         const slice = document.getElementById(`slice-${i}`);
-        const label = document.getElementById(`label-${i}`);
         if (i === index) {
           if (group) group.classList.add('active');
           if (slice) slice.classList.add('active');
-          if (label) label.classList.add('active');
         } else {
           if (group) group.classList.remove('active');
           if (slice) slice.classList.remove('active');
-          if (label) label.classList.remove('active');
         }
       }
 
-      updateTooltipText(index);
-
-      const tooltip = document.getElementById('tooltip');
-      if (tooltip) {
-        tooltip.classList.add('active', 'visible');
-      }
+      updateTooltipContent(index);
     }
-
-    /**
-     * Menu Switching for Python backend and JS event interop.
-     * @param {string} modifier - 'DEFAULT' | 'SHIFT' | 'CTRL' | 'META' | 'ALT'
-     */
-    window.switchMenu = function(modifier, force) {
-      const mod = (modifier || 'DEFAULT').toUpperCase();
-      if (mod === currentModifier && !force) return;
-      currentModifier = mod;
-
-      if (mod === 'SHIFT') {
-        applyPetalsState(SHIFT_TOOLS, 'SHIFT');
-      } else if (mod === 'CTRL' || mod === 'META' || mod === 'CMD' || mod === 'ALT') {
-        applyPetalsState(CTRL_TOOLS, 'CTRL');
-      } else {
-        applyPetalsState(DEFAULT_FORMATS, 'DEFAULT');
-      }
-    };
 
     /**
      * Updates hover state across the 8 sectors.
@@ -1067,8 +950,8 @@
       const dy = y - cy;
       const dist = Math.hypot(dx, dy);
 
-      // Inner hole: 68px radius | Outer radius: 180px radius
-      if (dist < 68 || dist > 180) {
+      // Cards span from r=88px to r=184px (leaving breathing gap to container wall)
+      if (dist < 85 || dist > 185) {
         window.clearHover();
         return;
       }
@@ -1084,7 +967,7 @@
     };
 
     /**
-     * Clears all petal highlights and resets center drop hub.
+     * Clears all petal highlights and resets center hub.
      */
     window.clearHover = function() {
       window.currentHoveredAction = null;
@@ -1094,45 +977,78 @@
       for (let i = 0; i < 8; i++) {
         const group = document.getElementById(`petal-group-${i}`);
         const slice = document.getElementById(`slice-${i}`);
-        const label = document.getElementById(`label-${i}`);
         if (group) group.classList.remove('active');
         if (slice) slice.classList.remove('active');
-        if (label) label.classList.remove('active');
       }
 
-      const tooltip = document.getElementById('tooltip');
-      if (tooltip) {
-        tooltip.classList.remove('active');
-      }
-      resetTooltipText();
+      resetCenterCircle();
     };
 
-    // ── Robust Modifier Keys Listener (Shift, Control, Alt, Meta) ──
-    function handleModifierKeyEvent(e) {
-      if (e.shiftKey || (e.type === 'keydown' && e.key === 'Shift')) {
-        window.switchMenu('SHIFT');
-      } else if (e.ctrlKey || e.altKey || e.metaKey || (e.type === 'keydown' && (e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta'))) {
-        window.switchMenu('CTRL');
-      } else {
-        window.switchMenu('DEFAULT');
+    // ── Strictly Toggle / Persistent Key Logic (NO HOLD, NO RESET ON RELEASE) ──
+
+    /**
+     * Locks in one of the 3 states. State persists until another toggle key is pressed.
+     * @param {number} stateNum - 1 | 2 | 3
+     */
+    function setRadialState(stateNum) {
+      if (stateNum < 1 || stateNum > 3) return;
+      currentState = stateNum;
+
+      let targetArray;
+      if (stateNum === 1) targetArray = STATE_1_FORMATS;
+      else if (stateNum === 2) targetArray = STATE_2_TOOLS;
+      else if (stateNum === 3) targetArray = STATE_3_UTILITIES;
+
+      applyPetalsState(targetArray);
+
+      const centerLabel = document.getElementById('tooltip-text');
+      if (centerLabel && !window.currentHoveredAction && !window.isProcessing) {
+        centerLabel.textContent = targetArray[0];
       }
     }
 
-    window.addEventListener('keydown', (e) => {
-      if (e.repeat) return;
-      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
-        handleModifierKeyEvent(e);
+    /**
+     * Keydown mapping:
+     * - Control -> State 1 (File Formats)
+     * - Shift   -> State 2 (Action Tools)
+     * - Space   -> State 3 (Utility Tools) [with e.preventDefault() to avoid scrolling]
+     */
+    function handleKeyDown(e) {
+      if (e.key === 'Control') {
+        setRadialState(1);
+      } else if (e.key === 'Shift') {
+        setRadialState(2);
+      } else if (e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        setRadialState(3);
       }
-    }, true);
+    }
 
-    window.addEventListener('keyup', (e) => {
-      if (e.key === 'Shift' || e.key === 'Control' || e.key === 'Alt' || e.key === 'Meta') {
-        handleModifierKeyEvent(e);
+    window.addEventListener('keydown', handleKeyDown, true);
+    document.addEventListener('keydown', handleKeyDown, true);
+
+    /**
+     * Window / backend API called by Python TransparentWebDropZone._sync_modifier.
+     */
+    window.switchMenu = function(modifier, force) {
+      const mod = (modifier || '').toUpperCase();
+      if (mod === 'CTRL' || mod === 'CONTROL' || mod === 'STATE1') {
+        setRadialState(1);
+      } else if (mod === 'SHIFT' || mod === 'STATE2') {
+        setRadialState(2);
+      } else if (mod === 'SPACE' || mod === 'UTILITY' || mod === 'STATE3') {
+        setRadialState(3);
       }
-    }, true);
+    };
 
-    window.addEventListener('blur', () => {
-      window.switchMenu('DEFAULT');
+    window.addEventListener('mousemove', (e) => {
+      if (!isDraggingWindow) {
+        window.updateHover(e.clientX, e.clientY);
+      }
+    }, { passive: true });
+
+    window.addEventListener('mouseleave', () => {
+      window.clearHover();
     });
 
     // ── QWebChannel Bridge to Python Backend ──
@@ -1197,43 +1113,6 @@
         return;
       }
 
-      if (act.startsWith('KEEP AWAKE') || act.startsWith('KEEP_AWAKE') || act.startsWith('AWAKE') || act === 'KEEPAWAKE') {
-        const nextState = !window.isKeepAwake;
-        window.isKeepAwake = nextState;
-
-        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-        if (b && typeof b.toggleKeepAwake === 'function') {
-          b.toggleKeepAwake(function(res) {
-            if (typeof window.setKeepAwakeState === 'function') {
-              window.setKeepAwakeState(res);
-            }
-          });
-        } else if (b && typeof b.toggle_keep_awake === 'function') {
-          b.toggle_keep_awake(function(res) {
-            if (typeof window.setKeepAwakeState === 'function') {
-              window.setKeepAwakeState(res);
-            }
-          });
-        } else if (b && typeof b.trigger_action === 'function') {
-          b.trigger_action('KEEP AWAKE');
-        } else {
-          document.title = 'quickdrop:action:KEEP AWAKE:' + Date.now();
-        }
-        return;
-      }
-
-      if (act === 'AIRDROP' || act === 'SHARE') {
-        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-        if (b && typeof b.open_file_dialog === 'function') {
-          b.open_file_dialog('AIRDROP');
-        } else if (b && typeof b.trigger_action === 'function') {
-          b.trigger_action('AIRDROP');
-        } else {
-          document.title = 'quickdrop:action:AIRDROP:' + Date.now();
-        }
-        return;
-      }
-
       const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
       if (b && typeof b.open_file_dialog === 'function') {
         b.open_file_dialog(act);
@@ -1256,43 +1135,41 @@
     let isDraggingWindow = false;
 
     document.addEventListener('mousedown', (e) => {
-        const isInteractive = e.target.closest('button') ||
-                              e.target.closest('.action-btn') ||
-                              e.target.closest('.petal-group') ||
-                              e.target.closest('.petal-slice') ||
-                              e.target.closest('.petal') ||
-                              e.target.closest('.segment-label') ||
-                              e.target.closest('.petal-icon') ||
-                              e.target.closest('#tooltip');
-        if (!isInteractive) {
-            isDraggingWindow = true;
-            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-            if (b && b.start_drag) {
-                b.start_drag();
-            }
+      const isInteractive = e.target.closest('button') ||
+                            e.target.closest('.action-btn') ||
+                            e.target.closest('.petal-group') ||
+                            e.target.closest('.petal-slice') ||
+                            e.target.closest('.petal') ||
+                            e.target.closest('.segment-label') ||
+                            e.target.closest('.petal-icon') ||
+                            e.target.closest('.petal-foreign') ||
+                            e.target.closest('#tooltip');
+      if (!isInteractive) {
+        isDraggingWindow = true;
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && b.start_drag) {
+          b.start_drag();
         }
+      }
     });
 
     document.addEventListener('mousemove', (e) => {
-        if (isDraggingWindow) {
-            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-            if (b && b.do_drag) {
-                b.do_drag();
-            }
+      if (isDraggingWindow) {
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && b.do_drag) {
+          b.do_drag();
         }
-        if (!isDraggingWindow) {
-            window.updateHover(e.clientX, e.clientY);
-        }
+      }
     });
 
     document.addEventListener('mouseup', () => { 
-        if (isDraggingWindow) {
-            isDraggingWindow = false;
-            const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
-            if (b && b.stop_drag) {
-                b.stop_drag();
-            }
+      if (isDraggingWindow) {
+        isDraggingWindow = false;
+        const b = window.backend || (typeof backend !== 'undefined' ? backend : null);
+        if (b && b.stop_drag) {
+          b.stop_drag();
         }
+      }
     });
 
     // Petal interactive click & hover handlers
@@ -1329,14 +1206,6 @@
       });
     }
 
-    window.addEventListener('mousemove', (e) => {
-      window.updateHover(e.clientX, e.clientY);
-    });
-
-    window.addEventListener('mouseleave', () => {
-      window.clearHover();
-    });
-
     // ── Drag & Drop Event Listeners ──
     const handleDragEnter = (e) => {
       e.preventDefault();
@@ -1345,7 +1214,6 @@
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
       }
-      handleModifierKeyEvent(e);
     };
 
     const handleDragOver = (e) => {
@@ -1355,7 +1223,6 @@
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
       }
-      handleModifierKeyEvent(e);
       if (e.clientX !== undefined && e.clientY !== undefined) {
         window.updateHover(e.clientX, e.clientY);
       }
@@ -1367,7 +1234,6 @@
         isFileDragging = false;
         document.body.classList.remove('dragging-file');
         window.clearHover();
-        window.switchMenu('DEFAULT');
       }
     };
 
@@ -1376,7 +1242,6 @@
       isFileDragging = false;
       document.body.classList.remove('dragging-file');
       window.clearHover();
-      window.switchMenu('DEFAULT');
     };
 
     window.addEventListener('dragenter', handleDragEnter, false);
@@ -1390,4 +1255,4 @@
     document.addEventListener('drop', handleDrop, false);
   </script>
 </body>
-</html>\n
+</html>
