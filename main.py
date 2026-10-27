@@ -3991,8 +3991,266 @@ class EditDialog(QDialog):
             super().keyPressEvent(event)
 
 
+class AnnotationItem:
+    """Base class for interactive, draggable annotation elements."""
+
+    def copy(self) -> "AnnotationItem":
+        raise NotImplementedError
+
+    def translate(self, dx: float, dy: float) -> None:
+        raise NotImplementedError
+
+    def get_bounding_rect(self) -> QRectF:
+        raise NotImplementedError
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        raise NotImplementedError
+
+    def draw(self, painter: QPainter) -> None:
+        raise NotImplementedError
+
+
+class RectangleAnnotationItem(AnnotationItem):
+    def __init__(self, rect: QRectF, color: QColor, stroke_width: float) -> None:
+        self.rect = QRectF(rect.normalized())
+        self.color = QColor(color)
+        self.stroke_width = float(stroke_width)
+
+    def copy(self) -> "RectangleAnnotationItem":
+        return RectangleAnnotationItem(QRectF(self.rect), QColor(self.color), self.stroke_width)
+
+    def translate(self, dx: float, dy: float) -> None:
+        self.rect.translate(dx, dy)
+
+    def get_bounding_rect(self) -> QRectF:
+        pad = self.stroke_width / 2.0 + 4.0
+        return self.rect.adjusted(-pad, -pad, pad, pad)
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        tol = max(self.stroke_width / 2.0, 10.0 * scale)
+        return self.rect.adjusted(-tol, -tol, tol, tol).contains(pt)
+
+    def draw(self, painter: QPainter) -> None:
+        pen = QPen(
+            self.color,
+            self.stroke_width,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawRect(self.rect)
+
+
+class EllipseAnnotationItem(AnnotationItem):
+    def __init__(self, rect: QRectF, color: QColor, stroke_width: float) -> None:
+        self.rect = QRectF(rect.normalized())
+        self.color = QColor(color)
+        self.stroke_width = float(stroke_width)
+
+    def copy(self) -> "EllipseAnnotationItem":
+        return EllipseAnnotationItem(QRectF(self.rect), QColor(self.color), self.stroke_width)
+
+    def translate(self, dx: float, dy: float) -> None:
+        self.rect.translate(dx, dy)
+
+    def get_bounding_rect(self) -> QRectF:
+        pad = self.stroke_width / 2.0 + 4.0
+        return self.rect.adjusted(-pad, -pad, pad, pad)
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        rx = self.rect.width() / 2.0
+        ry = self.rect.height() / 2.0
+        if rx <= 0.0 or ry <= 0.0:
+            return False
+        cx = self.rect.center().x()
+        cy = self.rect.center().y()
+        tol = max(self.stroke_width / 2.0, 10.0 * scale)
+        val = ((pt.x() - cx) / (rx + tol)) ** 2 + ((pt.y() - cy) / (ry + tol)) ** 2
+        return val <= 1.0
+
+    def draw(self, painter: QPainter) -> None:
+        pen = QPen(
+            self.color,
+            self.stroke_width,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawEllipse(self.rect)
+
+
+class ArrowAnnotationItem(AnnotationItem):
+    def __init__(self, p1: QPointF, p2: QPointF, color: QColor, stroke_width: float) -> None:
+        self.p1 = QPointF(p1)
+        self.p2 = QPointF(p2)
+        self.color = QColor(color)
+        self.stroke_width = float(stroke_width)
+
+    def copy(self) -> "ArrowAnnotationItem":
+        return ArrowAnnotationItem(QPointF(self.p1), QPointF(self.p2), QColor(self.color), self.stroke_width)
+
+    def translate(self, dx: float, dy: float) -> None:
+        self.p1 += QPointF(dx, dy)
+        self.p2 += QPointF(dx, dy)
+
+    def get_bounding_rect(self) -> QRectF:
+        rect = QRectF(
+            min(self.p1.x(), self.p2.x()),
+            min(self.p1.y(), self.p2.y()),
+            abs(self.p2.x() - self.p1.x()),
+            abs(self.p2.y() - self.p1.y()),
+        )
+        pad = max(self.stroke_width * 4.0, 16.0)
+        return rect.adjusted(-pad, -pad, pad, pad)
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        dx = self.p2.x() - self.p1.x()
+        dy = self.p2.y() - self.p1.y()
+        l2 = dx * dx + dy * dy
+        tol = max(self.stroke_width, 10.0 * scale)
+        if l2 == 0.0:
+            return math.hypot(pt.x() - self.p1.x(), pt.y() - self.p1.y()) <= tol
+        t = max(0.0, min(1.0, ((pt.x() - self.p1.x()) * dx + (pt.y() - self.p1.y()) * dy) / l2))
+        proj_x = self.p1.x() + t * dx
+        proj_y = self.p1.y() + t * dy
+        dist = math.hypot(pt.x() - proj_x, pt.y() - proj_y)
+        return dist <= tol
+
+    def draw(self, painter: QPainter) -> None:
+        pen = QPen(
+            self.color,
+            self.stroke_width,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawLine(self.p1, self.p2)
+
+        dx = self.p2.x() - self.p1.x()
+        dy = self.p2.y() - self.p1.y()
+        dist = math.hypot(dx, dy)
+        if dist > 3.0:
+            angle = math.atan2(dy, dx)
+            arrow_len = max(12.0, self.stroke_width * 3.5)
+            arrow_len = min(arrow_len, dist * 0.45)
+            arrow_angle = math.pi / 6.0
+
+            p_left = QPointF(
+                self.p2.x() - arrow_len * math.cos(angle - arrow_angle),
+                self.p2.y() - arrow_len * math.sin(angle - arrow_angle),
+            )
+            p_right = QPointF(
+                self.p2.x() - arrow_len * math.cos(angle + arrow_angle),
+                self.p2.y() - arrow_len * math.sin(angle + arrow_angle),
+            )
+            painter.setBrush(QBrush(self.color))
+            painter.drawPolygon(QPolygonF([self.p2, p_left, p_right]))
+
+
+class TextAnnotationItem(AnnotationItem):
+    def __init__(self, pos: QPointF, text: str, font: QFont, color: QColor) -> None:
+        self.pos = QPointF(pos)
+        self.text = text
+        self.font = QFont(font)
+        self.color = QColor(color)
+
+    def copy(self) -> "TextAnnotationItem":
+        return TextAnnotationItem(QPointF(self.pos), str(self.text), QFont(self.font), QColor(self.color))
+
+    def translate(self, dx: float, dy: float) -> None:
+        self.pos += QPointF(dx, dy)
+
+    def get_bounding_rect(self) -> QRectF:
+        fm = QFontMetrics(self.font)
+        w = float(fm.horizontalAdvance(self.text))
+        h = float(fm.height())
+        ascent = float(fm.ascent())
+        pad = 6.0
+        return QRectF(self.pos.x() - pad, self.pos.y() - ascent - pad, w + 2.0 * pad, h + 2.0 * pad)
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        return self.get_bounding_rect().contains(pt)
+
+    def draw(self, painter: QPainter) -> None:
+        painter.setFont(self.font)
+        painter.setPen(QPen(self.color))
+        painter.drawText(self.pos, self.text)
+
+
+class PenStrokeAnnotationItem(AnnotationItem):
+    def __init__(self, points: list[QPointF], color: QColor, stroke_width: float) -> None:
+        self.points = [QPointF(p) for p in points]
+        self.color = QColor(color)
+        self.stroke_width = float(stroke_width)
+
+    def copy(self) -> "PenStrokeAnnotationItem":
+        return PenStrokeAnnotationItem([QPointF(p) for p in self.points], QColor(self.color), self.stroke_width)
+
+    def translate(self, dx: float, dy: float) -> None:
+        offset = QPointF(dx, dy)
+        for i in range(len(self.points)):
+            self.points[i] += offset
+
+    def get_bounding_rect(self) -> QRectF:
+        if not self.points:
+            return QRectF()
+        min_x = min(p.x() for p in self.points)
+        max_x = max(p.x() for p in self.points)
+        min_y = min(p.y() for p in self.points)
+        max_y = max(p.y() for p in self.points)
+        pad = self.stroke_width / 2.0 + 4.0
+        return QRectF(min_x - pad, min_y - pad, (max_x - min_x) + 2.0 * pad, (max_y - min_y) + 2.0 * pad)
+
+    def contains(self, pt: QPointF, scale: float = 1.0) -> bool:
+        tol = max(self.stroke_width / 2.0, 8.0 * scale)
+        if not self.points:
+            return False
+        if len(self.points) == 1:
+            return math.hypot(pt.x() - self.points[0].x(), pt.y() - self.points[0].y()) <= tol
+        for i in range(len(self.points) - 1):
+            p1 = self.points[i]
+            p2 = self.points[i + 1]
+            dx = p2.x() - p1.x()
+            dy = p2.y() - p1.y()
+            l2 = dx * dx + dy * dy
+            if l2 == 0.0:
+                dist = math.hypot(pt.x() - p1.x(), pt.y() - p1.y())
+            else:
+                t = max(0.0, min(1.0, ((pt.x() - p1.x()) * dx + (pt.y() - self.p1.y()) * dy) / l2))
+                proj_x = p1.x() + t * dx
+                proj_y = p1.y() + t * dy
+                dist = math.hypot(pt.x() - proj_x, pt.y() - proj_y)
+            if dist <= tol:
+                return True
+        return False
+
+    def draw(self, painter: QPainter) -> None:
+        if not self.points:
+            return
+        pen = QPen(
+            self.color,
+            self.stroke_width,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.RoundCap,
+            Qt.PenJoinStyle.RoundJoin,
+        )
+        painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        if len(self.points) == 1:
+            painter.drawPoint(self.points[0])
+        else:
+            for i in range(len(self.points) - 1):
+                painter.drawLine(self.points[i], self.points[i + 1])
+
+
 class AnnotateCanvasWidget(QWidget):
-    """Interactive canvas supporting rich annotations (Pen, Rectangle, Ellipse, Arrow, Text) with live previews."""
+    """Interactive canvas supporting rich annotations (Select/Move, Pen, Rectangle, Ellipse, Arrow, Text) with live previews."""
 
     def __init__(self, file_path: str, parent=None) -> None:
         super().__init__(parent)
@@ -4004,47 +4262,88 @@ class AnnotateCanvasWidget(QWidget):
         self.drawing_layer = QPixmap(self._img_w, self._img_h)
         self.drawing_layer.fill(Qt.GlobalColor.transparent)
 
+        self.items: list[AnnotationItem] = []
+        self.selected_item: AnnotationItem | None = None
+        self._is_dragging_item: bool = False
+        self._drag_last_img_pt: QPointF | None = None
+        self._item_has_moved: bool = False
+
         self.current_tool = "Pen"
         self.current_color = QColor(255, 59, 48)  # Vibrant marker red
         self.thickness = 4
-        self.undo_stack: list[QPixmap] = []
+        self.undo_stack: list[list[AnnotationItem]] = []
 
         self._is_drawing = False
         self._start_point: QPointF | None = None
         self._current_point: QPointF | None = None
-        self._last_point: QPointF | None = None
+        self._current_pen_points: list[QPointF] = []
+        self._current_pen_item: PenStrokeAnnotationItem | None = None
 
         self.setMinimumSize(420, 320)
         self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setCursor(Qt.CursorShape.CrossCursor)
 
     def set_tool(self, tool: str) -> None:
         self.current_tool = tool
-        if tool == "Text":
+        self._is_drawing = False
+        self._is_dragging_item = False
+        if tool == "Select":
+            self.setCursor(Qt.CursorShape.ArrowCursor)
+        elif tool == "Text":
             self.setCursor(Qt.CursorShape.IBeamCursor)
+            self.selected_item = None
+            self.update()
         else:
             self.setCursor(Qt.CursorShape.CrossCursor)
+            self.selected_item = None
+            self.update()
 
     def set_color(self, color: QColor) -> None:
         self.current_color = color
+        if self.current_tool == "Select" and self.selected_item:
+            self._save_undo_state()
+            self.selected_item.color = QColor(color)
+            self._render_all_items()
+            self.update()
 
     def set_thickness(self, thickness: int) -> None:
         self.thickness = max(1, min(50, int(thickness)))
+        if self.current_tool == "Select" and self.selected_item and hasattr(self.selected_item, "stroke_width"):
+            self._save_undo_state()
+            self.selected_item.stroke_width = max(1.0, float(self.thickness) * self._get_image_scale())
+            self._render_all_items()
+            self.update()
 
     def _save_undo_state(self) -> None:
-        self.undo_stack.append(self.drawing_layer.copy())
+        state = [item.copy() for item in self.items]
+        self.undo_stack.append(state)
         if len(self.undo_stack) > 35:
             self.undo_stack.pop(0)
 
     def undo(self) -> None:
         if self.undo_stack:
-            self.drawing_layer = self.undo_stack.pop()
+            self.items = self.undo_stack.pop()
+            self.selected_item = None
+            self._render_all_items()
             self.update()
 
     def clear(self) -> None:
-        self._save_undo_state()
+        if self.items:
+            self._save_undo_state()
+            self.items = []
+            self.selected_item = None
+            self._render_all_items()
+            self.update()
+
+    def _render_all_items(self) -> None:
         self.drawing_layer.fill(Qt.GlobalColor.transparent)
-        self.update()
+        painter = QPainter(self.drawing_layer)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        for item in self.items:
+            item.draw(painter)
+        painter.end()
 
     def _get_display_rect(self) -> QRectF:
         w_avail = float(self.width())
@@ -4180,10 +4479,66 @@ class AnnotateCanvasWidget(QWidget):
             )
             painter.restore()
 
+        # Selection bounding box and corner handles for "Select" tool
+        if self.current_tool == "Select" and self.selected_item and (self.selected_item in self.items):
+            brect = self.selected_item.get_bounding_rect()
+            scale_x = drect.width() / float(self._img_w)
+            scale_y = drect.height() / float(self._img_h)
+            w_rect = QRectF(
+                drect.x() + brect.x() * scale_x,
+                drect.y() + brect.y() * scale_y,
+                brect.width() * scale_x,
+                brect.height() * scale_y,
+            )
+            painter.save()
+            sel_pen = QPen(QColor(0, 122, 255), 1.5, Qt.PenStyle.DashLine)
+            painter.setPen(sel_pen)
+            painter.setBrush(QBrush(QColor(0, 122, 255, 18)))
+            painter.drawRect(w_rect)
+
+            # Draw corner handles
+            handle_size = 6.0
+            handle_half = handle_size / 2.0
+            handle_pen = QPen(QColor(0, 122, 255), 1.0)
+            handle_brush = QBrush(QColor(255, 255, 255))
+            painter.setPen(handle_pen)
+            painter.setBrush(handle_brush)
+            for pt in [
+                w_rect.topLeft(),
+                w_rect.topRight(),
+                w_rect.bottomLeft(),
+                w_rect.bottomRight(),
+            ]:
+                painter.drawRect(QRectF(pt.x() - handle_half, pt.y() - handle_half, handle_size, handle_size))
+            painter.restore()
+
     def mousePressEvent(self, event) -> None:  # noqa: N802
         if event.button() == Qt.MouseButton.LeftButton:
             img_pt = self._widget_to_image_coords(event.position())
             if img_pt is None:
+                event.accept()
+                return
+
+            if self.current_tool == "Select":
+                scale = self._get_image_scale()
+                clicked_item = None
+                for item in reversed(self.items):
+                    if item.contains(img_pt, scale):
+                        clicked_item = item
+                        break
+
+                if clicked_item is not None:
+                    self.selected_item = clicked_item
+                    self._is_dragging_item = True
+                    self._drag_last_img_pt = img_pt
+                    self._item_has_moved = False
+                    self.setCursor(Qt.CursorShape.SizeAllCursor)
+                else:
+                    self.selected_item = None
+                    self._is_dragging_item = False
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+
+                self.update()
                 event.accept()
                 return
 
@@ -4201,16 +4556,13 @@ class AnnotateCanvasWidget(QWidget):
                     base_font_size = max(12, int(self.thickness * 1.5 + 8))
                     effective_font = max(10, int(base_font_size * scale))
 
-                    painter = QPainter(self.drawing_layer)
-                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                    painter.setPen(QPen(self.current_color))
                     font = QFont("-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif", effective_font)
                     font.setBold(True)
-                    painter.setFont(font)
                     fm = QFontMetrics(font)
                     draw_y = max(float(fm.ascent()), img_pt.y())
-                    painter.drawText(QPointF(img_pt.x(), draw_y), text.strip())
-                    painter.end()
+                    text_item = TextAnnotationItem(QPointF(img_pt.x(), draw_y), text.strip(), font, self.current_color)
+                    self.items.append(text_item)
+                    self._render_all_items()
                     self.update()
                 event.accept()
                 return
@@ -4218,25 +4570,18 @@ class AnnotateCanvasWidget(QWidget):
             self._is_drawing = True
             self._start_point = img_pt
             self._current_point = img_pt
-            self._last_point = img_pt
 
             if self.current_tool == "Pen":
                 self._save_undo_state()
-                painter = QPainter(self.drawing_layer)
-                painter.setRenderHint(QPainter.RenderHint.Antialiasing)
                 stroke = max(1.0, float(self.thickness) * self._get_image_scale())
-                pen = QPen(
-                    self.current_color,
-                    stroke,
-                    Qt.PenStyle.SolidLine,
-                    Qt.PenCapStyle.RoundCap,
-                    Qt.PenJoinStyle.RoundJoin,
-                )
-                painter.setPen(pen)
-                painter.drawPoint(img_pt)
-                painter.end()
+                self._current_pen_points = [img_pt]
+                self._current_pen_item = PenStrokeAnnotationItem(self._current_pen_points, self.current_color, stroke)
+                self.items.append(self._current_pen_item)
+                self.selected_item = None
+                self._render_all_items()
                 self.update()
             else:
+                self.selected_item = None
                 self.update()
 
             event.accept()
@@ -4244,14 +4589,48 @@ class AnnotateCanvasWidget(QWidget):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event) -> None:  # noqa: N802
+        img_pt = self._widget_to_image_coords(event.position())
+
+        if self.current_tool == "Select":
+            if img_pt is None:
+                event.accept()
+                return
+
+            if (event.buttons() & Qt.MouseButton.LeftButton) and self._is_dragging_item and self.selected_item:
+                dx = img_pt.x() - self._drag_last_img_pt.x()
+                dy = img_pt.y() - self._drag_last_img_pt.y()
+                if dx != 0.0 or dy != 0.0:
+                    if not self._item_has_moved:
+                        self._save_undo_state()
+                        self._item_has_moved = True
+                    self.selected_item.translate(dx, dy)
+                    self._drag_last_img_pt = img_pt
+                    self._render_all_items()
+                    self.update()
+            else:
+                scale = self._get_image_scale()
+                hovered = None
+                for item in reversed(self.items):
+                    if item.contains(img_pt, scale):
+                        hovered = item
+                        break
+                if hovered is not None:
+                    self.setCursor(Qt.CursorShape.SizeAllCursor)
+                else:
+                    self.setCursor(Qt.CursorShape.ArrowCursor)
+
+            event.accept()
+            return
+
         if (event.buttons() & Qt.MouseButton.LeftButton) and self._is_drawing:
-            img_pt = self._widget_to_image_coords(event.position())
             if img_pt is None:
                 event.accept()
                 return
 
             if self.current_tool == "Pen":
-                if self._last_point is not None:
+                if hasattr(self, "_current_pen_points") and self._current_pen_points:
+                    self._current_pen_points.append(img_pt)
+                    self._current_pen_item.points = self._current_pen_points
                     painter = QPainter(self.drawing_layer)
                     painter.setRenderHint(QPainter.RenderHint.Antialiasing)
                     stroke = max(1.0, float(self.thickness) * self._get_image_scale())
@@ -4263,9 +4642,8 @@ class AnnotateCanvasWidget(QWidget):
                         Qt.PenJoinStyle.RoundJoin,
                     )
                     painter.setPen(pen)
-                    painter.drawLine(self._last_point, img_pt)
+                    painter.drawLine(self._current_pen_points[-2], img_pt)
                     painter.end()
-                    self._last_point = img_pt
                     self.update()
             else:
                 self._current_point = img_pt
@@ -4273,38 +4651,78 @@ class AnnotateCanvasWidget(QWidget):
 
             event.accept()
             return
+
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event) -> None:  # noqa: N802
-        if event.button() == Qt.MouseButton.LeftButton and self._is_drawing:
-            img_pt = self._widget_to_image_coords(event.position())
-            if img_pt is not None:
-                self._current_point = img_pt
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self.current_tool == "Select":
+                if self._is_dragging_item:
+                    self._is_dragging_item = False
+                    self._render_all_items()
+                    self.update()
+                img_pt = self._widget_to_image_coords(event.position())
+                if img_pt is not None:
+                    scale = self._get_image_scale()
+                    hovered = any(item.contains(img_pt, scale) for item in self.items)
+                    self.setCursor(Qt.CursorShape.SizeAllCursor if hovered else Qt.CursorShape.ArrowCursor)
+                event.accept()
+                return
 
-            if self.current_tool in ("Rectangle", "Ellipse", "Arrow"):
-                if self._start_point and self._current_point:
-                    self._save_undo_state()
-                    painter = QPainter(self.drawing_layer)
-                    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-                    stroke = max(1.0, float(self.thickness) * self._get_image_scale())
-                    self._draw_shape(
-                        painter,
-                        self.current_tool,
-                        self._start_point,
-                        self._current_point,
-                        self.current_color,
-                        stroke,
-                    )
-                    painter.end()
+            if self._is_drawing:
+                img_pt = self._widget_to_image_coords(event.position())
+                if img_pt is not None:
+                    self._current_point = img_pt
 
-            self._is_drawing = False
-            self._start_point = None
-            self._current_point = None
-            self._last_point = None
-            self.update()
-            event.accept()
-            return
+                if self.current_tool in ("Rectangle", "Ellipse", "Arrow"):
+                    if self._start_point and self._current_point:
+                        if math.hypot(self._current_point.x() - self._start_point.x(), self._current_point.y() - self._start_point.y()) > 2.0:
+                            self._save_undo_state()
+                            stroke = max(1.0, float(self.thickness) * self._get_image_scale())
+                            if self.current_tool == "Rectangle":
+                                rect = QRectF(
+                                    min(self._start_point.x(), self._current_point.x()),
+                                    min(self._start_point.y(), self._current_point.y()),
+                                    abs(self._current_point.x() - self._start_point.x()),
+                                    abs(self._current_point.y() - self._start_point.y()),
+                                )
+                                new_item = RectangleAnnotationItem(rect, self.current_color, stroke)
+                            elif self.current_tool == "Ellipse":
+                                rect = QRectF(
+                                    min(self._start_point.x(), self._current_point.x()),
+                                    min(self._start_point.y(), self._current_point.y()),
+                                    abs(self._current_point.x() - self._start_point.x()),
+                                    abs(self._current_point.y() - self._start_point.y()),
+                                )
+                                new_item = EllipseAnnotationItem(rect, self.current_color, stroke)
+                            else:  # Arrow
+                                new_item = ArrowAnnotationItem(self._start_point, self._current_point, self.current_color, stroke)
+
+                            self.items.append(new_item)
+                            self._render_all_items()
+
+                self._is_drawing = False
+                self._start_point = None
+                self._current_point = None
+                self._current_pen_points = []
+                self._current_pen_item = None
+                self.update()
+                event.accept()
+                return
+
         super().mouseReleaseEvent(event)
+
+    def keyPressEvent(self, event) -> None:  # noqa: N802
+        if event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
+            if self.current_tool == "Select" and self.selected_item and (self.selected_item in self.items):
+                self._save_undo_state()
+                self.items.remove(self.selected_item)
+                self.selected_item = None
+                self._render_all_items()
+                self.update()
+                event.accept()
+                return
+        super().keyPressEvent(event)
 
 
 class AnnotateDialog(QDialog):
@@ -4385,7 +4803,7 @@ class AnnotateDialog(QDialog):
 
         # 1. Instruction label with proper margins, word wrap, and no clipping
         info_label = QLabel(
-            "Select a tool below to annotate. Drag on the image for shapes or pen strokes; click with the Text tool to type annotations."
+            "Select a tool to annotate, or choose 'Select' to click & drag existing shapes to reposition them."
         )
         info_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         info_label.setWordWrap(True)
@@ -4445,11 +4863,13 @@ class AnnotateDialog(QDialog):
         # Tool selector
         toolbar_layout.addWidget(QLabel("Tool:"))
         self.tool_combo = QComboBox()
+        self.tool_combo.addItem("👆 Select", "Select")
         self.tool_combo.addItem("✏️ Pen", "Pen")
         self.tool_combo.addItem("⬜ Rectangle", "Rectangle")
         self.tool_combo.addItem("⭕ Ellipse", "Ellipse")
         self.tool_combo.addItem("↗️ Arrow", "Arrow")
         self.tool_combo.addItem("🔤 Text", "Text")
+        self.tool_combo.setCurrentIndex(1)
         self.tool_combo.currentIndexChanged.connect(self._on_tool_changed)
         toolbar_layout.addWidget(self.tool_combo)
 
@@ -4633,6 +5053,7 @@ class AnnotateDialog(QDialog):
             full_pixmap = QPixmap(self.file_path)
             painter = QPainter(full_pixmap)
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            self.canvas._render_all_items()
             painter.drawPixmap(0, 0, self.canvas.drawing_layer)
             painter.end()
 
